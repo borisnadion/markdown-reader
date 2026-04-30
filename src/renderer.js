@@ -5,6 +5,7 @@ import 'highlight.js/styles/github.css';
 import './styles.css';
 
 const themes = [
+  { id: 'system', label: 'System', mode: 'system' },
   { id: 'github-light', label: 'GitHub Light', mode: 'light' },
   { id: 'vscode-light', label: 'VS Code Light+', mode: 'light' },
   { id: 'solarized-light', label: 'Solarized Light', mode: 'light' },
@@ -20,9 +21,11 @@ const state = {
   fileName: '',
   filePath: '',
   markdown: sampleMarkdown(),
-  theme: localStorage.getItem('theme') || 'github-light',
+  themePreference: localStorage.getItem('theme') || 'system',
   zoom: Number(localStorage.getItem('zoom') || '1')
 };
+
+const systemColorScheme = window.matchMedia('(prefers-color-scheme: dark)');
 
 marked.setOptions({
   gfm: true,
@@ -75,7 +78,7 @@ themeSelect.innerHTML = themes
   .map((theme) => `<option value="${theme.id}">${theme.label}</option>`)
   .join('');
 
-themeSelect.value = state.theme;
+themeSelect.value = state.themePreference;
 
 document.querySelector('#open-file').addEventListener('click', async () => {
   const file = await window.markdownReader.openMarkdown();
@@ -83,9 +86,13 @@ document.querySelector('#open-file').addEventListener('click', async () => {
 });
 
 themeSelect.addEventListener('change', () => {
-  state.theme = themeSelect.value;
-  localStorage.setItem('theme', state.theme);
+  state.themePreference = themeSelect.value;
+  localStorage.setItem('theme', state.themePreference);
   render();
+});
+
+systemColorScheme.addEventListener('change', () => {
+  if (state.themePreference === 'system') render();
 });
 
 document.querySelector('#zoom-out').addEventListener('click', zoomOut);
@@ -96,6 +103,25 @@ window.markdownReader.onFileOpen(openFile);
 window.markdownReader.onZoomIn(zoomIn);
 window.markdownReader.onZoomOut(zoomOut);
 window.markdownReader.onZoomReset(resetZoom);
+
+window.addEventListener('keydown', (event) => {
+  if (!event.metaKey && !event.ctrlKey) return;
+
+  if (event.key === '+' || event.key === '=') {
+    event.preventDefault();
+    zoomIn();
+  }
+
+  if (event.key === '-') {
+    event.preventDefault();
+    zoomOut();
+  }
+
+  if (event.key === '0') {
+    event.preventDefault();
+    resetZoom();
+  }
+});
 
 window.addEventListener('dragover', (event) => {
   event.preventDefault();
@@ -151,12 +177,13 @@ function setZoom(value) {
 }
 
 function render() {
-  document.documentElement.dataset.theme = state.theme;
-  document.documentElement.dataset.mode = themes.find((theme) => theme.id === state.theme)?.mode || 'light';
+  const activeTheme = resolveTheme(state.themePreference);
+  document.documentElement.dataset.theme = activeTheme.id;
+  document.documentElement.dataset.mode = activeTheme.mode;
 
   fileNameEl.textContent = state.fileName || 'Untitled Preview';
   filePathEl.textContent = state.filePath || 'Open or drop a Markdown file';
-  themeSelect.value = state.theme;
+  themeSelect.value = state.themePreference;
 
   const html = marked.parse(state.markdown);
   previewEl.innerHTML = DOMPurify.sanitize(html, {
@@ -173,6 +200,16 @@ function render() {
   }
 
   renderZoom();
+}
+
+function resolveTheme(themePreference) {
+  if (themePreference === 'system') {
+    return systemColorScheme.matches
+      ? { id: 'github-dark', mode: 'dark' }
+      : { id: 'github-light', mode: 'light' };
+  }
+
+  return themes.find((theme) => theme.id === themePreference) || themes[1];
 }
 
 function renderZoom() {

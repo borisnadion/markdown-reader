@@ -1,5 +1,6 @@
 {
   "name": "markdown-reader",
+  "productName": "Markdown Reader",
   "version": "0.1.0",
   "description": "A macOS-focused Electron markdown file viewer with themes and browser-style zoom.",
   "type": "module",

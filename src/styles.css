@@ -25,8 +25,8 @@
 
 body {
   margin: 0;
-  min-width: 720px;
-  min-height: 520px;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
   background: var(--app-bg);
   color: var(--control-fg);
@@ -45,13 +45,14 @@ select {
 }
 
 .toolbar {
+  -webkit-app-region: drag;
   align-items: center;
   backdrop-filter: blur(18px);
   background: var(--toolbar-bg);
   border-bottom: 1px solid var(--toolbar-border);
   display: grid;
   gap: 16px;
-  grid-template-columns: 86px minmax(0, 1fr) auto;
+  grid-template-columns: 76px minmax(120px, 1fr) auto;
   padding: 12px 18px 12px 20px;
   position: relative;
   z-index: 2;
@@ -86,6 +87,7 @@ select {
 }
 
 .toolbar-actions {
+  -webkit-app-region: no-drag;
   align-items: center;
   display: flex;
   gap: 10px;
@@ -94,6 +96,7 @@ select {
 .icon-button,
 .zoom-value,
 .select-wrap select {
+  -webkit-app-region: no-drag;
   background: var(--control-bg);
   border: 1px solid var(--control-border);
   color: var(--control-fg);
@@ -151,7 +154,7 @@ select {
   background: var(--preview-bg);
   color: var(--preview-fg);
   overflow: auto;
-  padding: 42px max(32px, calc((100vw - 920px) / 2));
+  padding: clamp(22px, 5vw, 42px) max(20px, calc((100vw - 920px) / 2));
 }
 
 .markdown-body {
@@ -188,6 +191,37 @@ select {
   position: absolute;
   white-space: nowrap;
   width: 1px;
+}
+
+@media (max-width: 700px) {
+  .toolbar {
+    gap: 10px;
+    grid-template-columns: 68px minmax(80px, 1fr) auto;
+    padding-right: 12px;
+  }
+
+  .file-path {
+    display: none;
+  }
+
+  .toolbar-actions {
+    gap: 6px;
+  }
+
+  .select-wrap select {
+    max-width: 138px;
+    min-width: 118px;
+  }
+
+  .zoom-group {
+    grid-template-columns: 32px 50px 32px;
+  }
+
+  .icon-button,
+  .zoom-value,
+  .select-wrap select {
+    height: 32px;
+  }
 }
 
 .markdown-body {

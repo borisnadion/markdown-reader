@@ -4,18 +4,23 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const APP_NAME = 'Markdown Reader';
 
 let mainWindow = null;
 let pendingOpenPath = null;
 
 const isDev = Boolean(process.env.ELECTRON_START_URL);
 
+app.setName(APP_NAME);
+
 function createWindow() {
   mainWindow = new BrowserWindow({
+    title: APP_NAME,
     width: 1120,
     height: 820,
-    minWidth: 760,
-    minHeight: 520,
+    minWidth: 560,
+    minHeight: 420,
+    resizable: true,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 18 },
     webPreferences: {
@@ -53,6 +58,12 @@ function createWindow() {
   });
 }
 
+function setWindowPreset(width, height) {
+  if (!mainWindow) return;
+  mainWindow.setSize(width, height, true);
+  mainWindow.center();
+}
+
 async function readMarkdownFile(filePath) {
   const content = await fs.readFile(filePath, 'utf8');
   return {
@@ -75,7 +86,7 @@ async function sendMarkdownFile(filePath) {
 function buildMenu() {
   const template = [
     {
-      label: app.name,
+      label: APP_NAME,
       submenu: [
         { role: 'about' },
         { type: 'separator' },
@@ -114,7 +125,7 @@ function buildMenu() {
       submenu: [
         {
           label: 'Zoom In',
-          accelerator: 'CommandOrControl+Plus',
+          accelerator: 'CommandOrControl+=',
           click: () => mainWindow?.webContents.send('view:zoom-in')
         },
         {
@@ -126,6 +137,22 @@ function buildMenu() {
           label: 'Actual Size',
           accelerator: 'CommandOrControl+0',
           click: () => mainWindow?.webContents.send('view:zoom-reset')
+        },
+        { type: 'separator' },
+        {
+          label: 'Compact Window',
+          accelerator: 'CommandOrControl+1',
+          click: () => setWindowPreset(820, 620)
+        },
+        {
+          label: 'Standard Window',
+          accelerator: 'CommandOrControl+2',
+          click: () => setWindowPreset(1120, 820)
+        },
+        {
+          label: 'Wide Window',
+          accelerator: 'CommandOrControl+3',
+          click: () => setWindowPreset(1440, 960)
         },
         { type: 'separator' },
         { role: 'togglefullscreen' }
