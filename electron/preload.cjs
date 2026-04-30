@@ -26,5 +26,15 @@ contextBridge.exposeInMainWorld('markdownReader', {
     const listener = () => callback();
     ipcRenderer.on('search:focus', listener);
     return () => ipcRenderer.removeListener('search:focus', listener);
+  },
+  onNextDocument: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('document:next', listener);
+    return () => ipcRenderer.removeListener('document:next', listener);
+  },
+  onPreviousDocument: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('document:previous', listener);
+    return () => ipcRenderer.removeListener('document:previous', listener);
   }
 });

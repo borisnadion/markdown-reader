@@ -9,7 +9,7 @@ const APP_NAME = 'Markdown Reader';
 const APP_ICON = path.join(__dirname, '..', 'build', 'icon.png');
 
 let mainWindow = null;
-let pendingOpenPath = null;
+let pendingOpenPaths = [];
 
 const isDev = Boolean(process.env.ELECTRON_START_URL);
 
@@ -55,9 +55,10 @@ function createWindow() {
   });
 
   mainWindow.webContents.once('did-finish-load', async () => {
-    if (pendingOpenPath) {
-      await sendMarkdownFile(pendingOpenPath);
-      pendingOpenPath = null;
+    if (pendingOpenPaths.length > 0) {
+      const filePaths = pendingOpenPaths;
+      pendingOpenPaths = [];
+      await sendMarkdownFiles(filePaths);
     }
   });
 }
@@ -87,14 +88,18 @@ async function readMarkdownFile(filePath) {
   };
 }
 
-async function sendMarkdownFile(filePath) {
+async function readMarkdownFiles(filePaths) {
+  return Promise.all(filePaths.map((filePath) => readMarkdownFile(filePath)));
+}
+
+async function sendMarkdownFiles(filePaths) {
   if (!mainWindow) {
-    pendingOpenPath = filePath;
+    pendingOpenPaths.push(...filePaths);
     return;
   }
 
-  const file = await readMarkdownFile(filePath);
-  mainWindow.webContents.send('file:open', file);
+  const files = await readMarkdownFiles(filePaths);
+  mainWindow.webContents.send('file:open', files);
 }
 
 function buildMenu() {
@@ -122,11 +127,11 @@ function buildMenu() {
           click: async () => {
             if (!mainWindow) return;
             const result = await dialog.showOpenDialog(mainWindow, {
-              properties: ['openFile'],
+              properties: ['openFile', 'multiSelections'],
               filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'mdown', 'mkd'] }]
             });
-            if (!result.canceled && result.filePaths[0]) {
-              await sendMarkdownFile(result.filePaths[0]);
+            if (!result.canceled && result.filePaths.length > 0) {
+              await sendMarkdownFiles(result.filePaths);
             }
           }
         },
@@ -192,7 +197,22 @@ function buildMenu() {
     },
     {
       label: 'Window',
-      submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'front' }]
+      submenu: [
+        {
+          label: 'Next Document',
+          accelerator: 'CommandOrControl+`',
+          click: () => mainWindow?.webContents.send('document:next')
+        },
+        {
+          label: 'Previous Document',
+          accelerator: 'CommandOrControl+Shift+`',
+          click: () => mainWindow?.webContents.send('document:previous')
+        },
+        { type: 'separator' },
+        { role: 'minimize' },
+        { role: 'zoom' },
+        { role: 'front' }
+      ]
     }
   ];
 
@@ -201,12 +221,12 @@ function buildMenu() {
 
 ipcMain.handle('dialog:openMarkdown', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile'],
+    properties: ['openFile', 'multiSelections'],
     filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'mdown', 'mkd'] }]
   });
 
-  if (result.canceled || !result.filePaths[0]) return null;
-  return readMarkdownFile(result.filePaths[0]);
+  if (result.canceled || result.filePaths.length === 0) return [];
+  return readMarkdownFiles(result.filePaths);
 });
 
 app.whenReady().then(() => {
@@ -221,7 +241,7 @@ app.whenReady().then(() => {
 
 app.on('open-file', (event, filePath) => {
   event.preventDefault();
-  sendMarkdownFile(filePath);
+  sendMarkdownFiles([filePath]);
 });
 
 app.on('window-all-closed', () => {

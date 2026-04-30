@@ -33,15 +33,15 @@ const themes = [
 ];
 
 const state = {
-  fileName: '',
-  filePath: '',
-  markdown: sampleMarkdown(),
+  documents: [],
+  activeDocumentId: '',
   themePreference: localStorage.getItem('theme') || 'system',
   zoom: Number(localStorage.getItem('zoom') || '1'),
   searchQuery: '',
   searchMatches: [],
   activeSearchIndex: -1
 };
+let nextDocumentId = 1;
 
 const systemColorScheme = window.matchMedia('(prefers-color-scheme: dark)');
 
@@ -98,7 +98,8 @@ app.innerHTML = `
         </div>
       </div>
     </header>
-    <section class="drop-overlay" id="drop-overlay">Drop Markdown file to open</section>
+    <nav class="document-tabs" id="document-tabs" aria-label="Open documents"></nav>
+    <section class="drop-overlay" id="drop-overlay">Drop Markdown files to open</section>
     <section class="viewer-frame">
       <article class="markdown-body" id="preview"></article>
     </section>
@@ -113,6 +114,7 @@ const zoomValue = document.querySelector('#zoom-reset');
 const dropOverlay = document.querySelector('#drop-overlay');
 const searchForm = document.querySelector('#search-form');
 const searchInput = document.querySelector('#search-input');
+const documentTabsEl = document.querySelector('#document-tabs');
 
 themeSelect.innerHTML = themes
   .map((theme) => `<option value="${theme.id}">${theme.label}</option>`)
@@ -121,8 +123,15 @@ themeSelect.innerHTML = themes
 themeSelect.value = state.themePreference;
 
 document.querySelector('#open-file').addEventListener('click', async () => {
-  const file = await window.markdownReader.openMarkdown();
-  if (file) openFile(file);
+  const files = await window.markdownReader.openMarkdown();
+  if (files?.length) openFiles(files);
+});
+
+documentTabsEl.addEventListener('click', (event) => {
+  const tab = event.target.closest('[data-document-id]');
+  if (!tab) return;
+
+  switchToDocument(tab.dataset.documentId);
 });
 
 themeSelect.addEventListener('change', () => {
@@ -148,11 +157,13 @@ searchInput.addEventListener('input', () => {
   resetSearchState();
 });
 
-window.markdownReader.onFileOpen(openFile);
+window.markdownReader.onFileOpen(openFiles);
 window.markdownReader.onZoomIn(zoomIn);
 window.markdownReader.onZoomOut(zoomOut);
 window.markdownReader.onZoomReset(resetZoom);
 window.markdownReader.onSearchFocus(focusSearch);
+window.markdownReader.onNextDocument(switchToNextDocument);
+window.markdownReader.onPreviousDocument(() => switchToNextDocument(-1));
 
 window.addEventListener('keydown', (event) => {
   if (!event.metaKey && !event.ctrlKey) return;
@@ -160,6 +171,11 @@ window.addEventListener('keydown', (event) => {
   if (event.key.toLowerCase() === 'f') {
     event.preventDefault();
     focusSearch();
+  }
+
+  if (event.code === 'Backquote' || event.key === '`' || event.key === '~') {
+    event.preventDefault();
+    switchToNextDocument(event.shiftKey ? -1 : 1);
   }
 
   if (event.key === '+' || event.key === '=') {
@@ -193,26 +209,84 @@ window.addEventListener('drop', async (event) => {
   event.preventDefault();
   dropOverlay.classList.remove('is-visible');
 
-  const file = [...event.dataTransfer.files].find((candidate) =>
+  const droppedFiles = [...event.dataTransfer.files].filter((candidate) =>
     /\.(md|markdown|mdown|mkd)$/i.test(candidate.name)
   );
 
-  if (!file) return;
+  if (droppedFiles.length === 0) return;
 
-  openFile({
-    name: file.name,
-    path: file.path || '',
-    content: await file.text()
-  });
+  openFiles(
+    await Promise.all(
+      droppedFiles.map(async (file) => ({
+        name: file.name,
+        path: file.path || '',
+        content: await file.text()
+      }))
+    )
+  );
 });
 
-function openFile(file) {
-  state.fileName = file.name;
-  state.filePath = file.path;
-  state.markdown = file.content;
+function openFiles(files) {
+  const documents = (Array.isArray(files) ? files : [files]).map(normalizeDocument).filter(Boolean);
+  if (documents.length === 0) return;
+
+  for (const openDocument of documents) {
+    const existingIndex = openDocument.path
+      ? state.documents.findIndex((candidate) => candidate.path === openDocument.path)
+      : -1;
+
+    if (existingIndex === -1) {
+      state.documents.push(openDocument);
+      state.activeDocumentId = openDocument.id;
+    } else {
+      const existingDocument = state.documents[existingIndex];
+      state.documents[existingIndex] = { ...openDocument, id: existingDocument.id };
+      state.activeDocumentId = existingDocument.id;
+    }
+  }
+
   resetSearchState();
   searchInput.value = '';
   render();
+}
+
+function normalizeDocument(file) {
+  if (!file || typeof file.content !== 'string') return null;
+
+  const name = file.name || file.path?.split(/[\\/]/).pop() || 'Untitled Preview';
+
+  return {
+    id: file.path || `untitled-${nextDocumentId++}`,
+    name,
+    path: file.path || '',
+    content: file.content
+  };
+}
+
+function switchToDocument(documentId) {
+  if (!state.documents.some((document) => document.id === documentId)) return;
+
+  state.activeDocumentId = documentId;
+  resetSearchState();
+  searchInput.value = '';
+  render();
+}
+
+function switchToNextDocument(direction = 1) {
+  if (state.documents.length < 2) return;
+
+  const activeIndex = Math.max(
+    0,
+    state.documents.findIndex((document) => document.id === state.activeDocumentId)
+  );
+  const nextIndex =
+    (activeIndex + direction + state.documents.length) % state.documents.length;
+
+  switchToDocument(state.documents[nextIndex].id);
+}
+
+function getActiveDocument() {
+  return state.documents.find((document) => document.id === state.activeDocumentId) || null;
 }
 
 function zoomIn() {
@@ -237,14 +311,16 @@ function render() {
   resetSearchState();
 
   const activeTheme = resolveTheme(state.themePreference);
+  const activeDocument = getActiveDocument();
   document.documentElement.dataset.theme = activeTheme.id;
   document.documentElement.dataset.mode = activeTheme.mode;
 
-  fileNameEl.textContent = state.fileName || 'Untitled Preview';
-  filePathEl.textContent = state.filePath || 'Open or drop a Markdown file';
+  fileNameEl.textContent = activeDocument?.name || 'Untitled Preview';
+  filePathEl.textContent = activeDocument?.path || 'Open or drop a Markdown file';
   themeSelect.value = state.themePreference;
+  renderDocumentTabs();
 
-  const html = marked.parse(state.markdown);
+  const html = marked.parse(activeDocument?.content || sampleMarkdown());
   previewEl.innerHTML = DOMPurify.sanitize(html, {
     USE_PROFILES: { html: true },
     ADD_ATTR: ['target', 'rel']
@@ -259,6 +335,22 @@ function render() {
   }
 
   renderZoom();
+}
+
+function renderDocumentTabs() {
+  documentTabsEl.hidden = state.documents.length === 0;
+  documentTabsEl.replaceChildren(
+    ...state.documents.map((openDocument) => {
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'document-tab';
+      tab.dataset.documentId = openDocument.id;
+      tab.textContent = openDocument.name;
+      tab.title = openDocument.path || openDocument.name;
+      tab.setAttribute('aria-selected', String(openDocument.id === state.activeDocumentId));
+      return tab;
+    })
+  );
 }
 
 function focusSearch() {
@@ -419,6 +511,7 @@ Open a Markdown file with **Command+O** or drop one into this window.
 ## Features
 
 - GitHub-flavored Markdown
+- Multiple open files with Command+\` switching
 - Light and dark themes
 - Syntax highlighting
 - Browser-style zoom for text, tables, and images

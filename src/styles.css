@@ -9,6 +9,8 @@
   --control-border: #b8c3d2;
   --control-fg: #1d2733;
   --text-muted: #657386;
+  --tab-bg: rgba(248, 250, 252, 0.72);
+  --tab-active-bg: #ffffff;
   --preview-bg: #ffffff;
   --preview-fg: #24292f;
   --preview-muted: #57606a;
@@ -40,7 +42,7 @@ select {
 
 .shell {
   display: grid;
-  grid-template-rows: 68px 1fr;
+  grid-template-rows: 68px auto 1fr;
   height: 100vh;
   position: relative;
 }
@@ -178,6 +180,52 @@ select {
   padding: 0;
 }
 
+.document-tabs {
+  -webkit-app-region: no-drag;
+  align-items: end;
+  background: var(--tab-bg);
+  border-bottom: 1px solid var(--toolbar-border);
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 7px 18px 0;
+  scrollbar-width: thin;
+}
+
+.document-tabs[hidden] {
+  display: none;
+}
+
+.document-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 7px 7px 0 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex: 0 1 220px;
+  height: 34px;
+  max-width: 240px;
+  min-width: 96px;
+  overflow: hidden;
+  padding: 0 12px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-tab:hover {
+  color: var(--control-fg);
+}
+
+.document-tab[aria-selected="true"] {
+  background: var(--tab-active-bg);
+  border-color: var(--toolbar-border);
+  color: var(--control-fg);
+  font-weight: 700;
+}
+
 .viewer-frame {
   background: var(--preview-bg);
   color: var(--preview-fg);
@@ -210,7 +258,7 @@ select {
   display: none;
   font-size: 18px;
   font-weight: 700;
-  inset: 88px 28px 28px;
+  inset: 108px 28px 28px;
   justify-content: center;
   pointer-events: none;
   position: absolute;
@@ -270,6 +318,11 @@ select {
 
   .toolbar-actions {
     display: none;
+  }
+
+  .document-tabs {
+    padding-left: 12px;
+    padding-right: 12px;
   }
 }
 
@@ -373,6 +426,8 @@ select {
 [data-theme='vscode-light'] {
   --app-bg: #e5e9f0;
   --toolbar-bg: rgba(243, 246, 251, 0.9);
+  --tab-bg: rgba(243, 246, 251, 0.76);
+  --tab-active-bg: #ffffff;
   --preview-bg: #ffffff;
   --preview-fg: #1f1f1f;
   --preview-muted: #616161;
@@ -385,6 +440,8 @@ select {
 [data-theme='solarized-light'] {
   --app-bg: #eee8d5;
   --toolbar-bg: rgba(253, 246, 227, 0.9);
+  --tab-bg: rgba(253, 246, 227, 0.74);
+  --tab-active-bg: #fdf6e3;
   --preview-bg: #fdf6e3;
   --preview-fg: #586e75;
   --preview-muted: #657b83;
@@ -398,6 +455,8 @@ select {
 [data-theme='clean-paper'] {
   --app-bg: #dfe6ef;
   --toolbar-bg: rgba(250, 251, 252, 0.9);
+  --tab-bg: rgba(250, 251, 252, 0.76);
+  --tab-active-bg: #fbfbf8;
   --preview-bg: #fbfbf8;
   --preview-fg: #222426;
   --preview-muted: #68707c;
@@ -416,6 +475,8 @@ select {
   --control-border: #3d444d;
   --control-fg: #f0f6fc;
   --text-muted: #8b949e;
+  --tab-bg: rgba(22, 27, 34, 0.76);
+  --tab-active-bg: #0d1117;
   --preview-bg: #0d1117;
   --preview-fg: #e6edf3;
   --preview-muted: #8b949e;
@@ -435,6 +496,8 @@ select {
   --control-border: #6272a4;
   --control-fg: #f8f8f2;
   --text-muted: #b7b9d6;
+  --tab-bg: rgba(40, 42, 54, 0.76);
+  --tab-active-bg: #282a36;
   --preview-bg: #282a36;
   --preview-fg: #f8f8f2;
   --preview-muted: #b7b9d6;
@@ -454,6 +517,8 @@ select {
   --control-border: #5e81ac;
   --control-fg: #eceff4;
   --text-muted: #d8dee9;
+  --tab-bg: rgba(46, 52, 64, 0.76);
+  --tab-active-bg: #2e3440;
   --preview-bg: #2e3440;
   --preview-fg: #eceff4;
   --preview-muted: #d8dee9;
@@ -473,6 +538,8 @@ select {
   --control-border: #4b5263;
   --control-fg: #abb2bf;
   --text-muted: #8b92a2;
+  --tab-bg: rgba(33, 37, 43, 0.76);
+  --tab-active-bg: #282c34;
   --preview-bg: #282c34;
   --preview-fg: #abb2bf;
   --preview-muted: #8b92a2;
@@ -492,6 +559,8 @@ select {
   --control-border: #586e75;
   --control-fg: #eee8d5;
   --text-muted: #93a1a1;
+  --tab-bg: rgba(0, 43, 54, 0.76);
+  --tab-active-bg: #002b36;
   --preview-bg: #002b36;
   --preview-fg: #839496;
   --preview-muted: #93a1a1;
