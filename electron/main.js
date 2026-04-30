@@ -1,10 +1,12 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
+import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_NAME = 'Markdown Reader';
+const APP_ICON = path.join(__dirname, '..', 'build', 'icon.png');
 
 let mainWindow = null;
 let pendingOpenPath = null;
@@ -178,6 +180,7 @@ ipcMain.handle('dialog:openMarkdown', async () => {
 });
 
 app.whenReady().then(() => {
+  if (existsSync(APP_ICON)) app.dock?.setIcon(APP_ICON);
   buildMenu();
   createWindow();
 

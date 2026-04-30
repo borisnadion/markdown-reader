@@ -5,6 +5,8 @@ node_modules/
 dist/
 release/
 out/
+build/icon.iconset/
+build/icon.png
 
 # Electron/Vite cache
 .vite/

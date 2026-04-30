@@ -9,6 +9,7 @@
     "dev": "node scripts/dev.mjs",
     "start": "electron .",
     "build": "vite build",
+    "icons": "node scripts/make-icons.mjs",
     "dist:mac": "npm run build && electron-builder --mac dir"
   },
   "dependencies": {
@@ -34,6 +35,11 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "extendInfo": {
+        "CFBundleName": "Markdown Reader",
+        "CFBundleDisplayName": "Markdown Reader"
+      },
       "target": [
         "dir"
       ]
