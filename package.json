@@ -10,7 +10,7 @@
     "start": "electron .",
     "build": "vite build",
     "icons": "node scripts/make-icons.mjs",
-    "dist:mac": "npm run build && electron-builder --mac dir"
+    "dist:mac": "npm run icons && npm run build && electron-builder --mac dir"
   },
   "dependencies": {
     "dompurify": "^3.2.3",
@@ -25,6 +25,7 @@
   "build": {
     "appId": "com.markdownreader.app",
     "productName": "Markdown Reader",
+    "executableName": "Markdown Reader",
     "directories": {
       "output": "release"
     },
@@ -38,7 +39,9 @@
       "icon": "build/icon.icns",
       "extendInfo": {
         "CFBundleName": "Markdown Reader",
-        "CFBundleDisplayName": "Markdown Reader"
+        "CFBundleDisplayName": "Markdown Reader",
+        "CFBundleExecutable": "Markdown Reader",
+        "CFBundleIdentifier": "com.markdownreader.app"
       },
       "target": [
         "dir"

@@ -14,10 +14,12 @@ let pendingOpenPath = null;
 const isDev = Boolean(process.env.ELECTRON_START_URL);
 
 app.setName(APP_NAME);
+process.title = APP_NAME;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
     title: APP_NAME,
+    icon: existsSync(APP_ICON) ? APP_ICON : undefined,
     width: 1120,
     height: 820,
     minWidth: 560,
@@ -58,6 +60,16 @@ function createWindow() {
       pendingOpenPath = null;
     }
   });
+}
+
+function configureAppIdentity() {
+  app.setName(APP_NAME);
+  app.setAboutPanelOptions({
+    applicationName: APP_NAME,
+    applicationVersion: app.getVersion()
+  });
+
+  if (existsSync(APP_ICON)) app.dock?.setIcon(APP_ICON);
 }
 
 function setWindowPreset(width, height) {
@@ -180,7 +192,7 @@ ipcMain.handle('dialog:openMarkdown', async () => {
 });
 
 app.whenReady().then(() => {
-  if (existsSync(APP_ICON)) app.dock?.setIcon(APP_ICON);
+  configureAppIdentity();
   buildMenu();
   createWindow();
 

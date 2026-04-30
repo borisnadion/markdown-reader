@@ -48,15 +48,17 @@ npm run dist:mac
 This creates an unpacked local app bundle at:
 
 ```text
-release/mac/Markdown Reader.app
+release/mac-arm64/Markdown Reader.app
 ```
+
+On Intel Macs, Electron Builder may use `release/mac/Markdown Reader.app` instead.
 
 ## Copy to Applications
 
 Close the app if it is already running, then copy the packaged bundle:
 
 ```sh
-ditto "release/mac/Markdown Reader.app" "/Applications/Markdown Reader.app"
+ditto "release/mac-arm64/Markdown Reader.app" "/Applications/Markdown Reader.app"
 ```
 
 Launch it from Finder:
@@ -65,13 +67,15 @@ Launch it from Finder:
 open "/Applications/Markdown Reader.app"
 ```
 
+Use the packaged `/Applications/Markdown Reader.app` when checking the Cmd-Tab name and Dock icon. Development mode runs through Electron's development launcher, so macOS may still expose Electron in some system-level UI.
+
 ## Replace an Existing Local Copy
 
 If `/Applications/Markdown Reader.app` already exists, remove it first:
 
 ```sh
 rm -rf "/Applications/Markdown Reader.app"
-ditto "release/mac/Markdown Reader.app" "/Applications/Markdown Reader.app"
+ditto "release/mac-arm64/Markdown Reader.app" "/Applications/Markdown Reader.app"
 ```
 
 ## Notes
