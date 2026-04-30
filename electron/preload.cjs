@@ -21,5 +21,10 @@ contextBridge.exposeInMainWorld('markdownReader', {
     const listener = () => callback();
     ipcRenderer.on('view:zoom-reset', listener);
     return () => ipcRenderer.removeListener('view:zoom-reset', listener);
+  },
+  onSearchFocus: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('search:focus', listener);
+    return () => ipcRenderer.removeListener('search:focus', listener);
   }
 });

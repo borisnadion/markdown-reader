@@ -1,6 +1,21 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import hljs from 'highlight.js';
+import hljs from 'highlight.js/lib/core';
+import bash from 'highlight.js/lib/languages/bash';
+import css from 'highlight.js/lib/languages/css';
+import dockerfile from 'highlight.js/lib/languages/dockerfile';
+import go from 'highlight.js/lib/languages/go';
+import java from 'highlight.js/lib/languages/java';
+import javascript from 'highlight.js/lib/languages/javascript';
+import json from 'highlight.js/lib/languages/json';
+import markdown from 'highlight.js/lib/languages/markdown';
+import python from 'highlight.js/lib/languages/python';
+import ruby from 'highlight.js/lib/languages/ruby';
+import rust from 'highlight.js/lib/languages/rust';
+import sql from 'highlight.js/lib/languages/sql';
+import typescript from 'highlight.js/lib/languages/typescript';
+import xml from 'highlight.js/lib/languages/xml';
+import yaml from 'highlight.js/lib/languages/yaml';
 import 'highlight.js/styles/github.css';
 import './styles.css';
 
@@ -22,10 +37,29 @@ const state = {
   filePath: '',
   markdown: sampleMarkdown(),
   themePreference: localStorage.getItem('theme') || 'system',
-  zoom: Number(localStorage.getItem('zoom') || '1')
+  zoom: Number(localStorage.getItem('zoom') || '1'),
+  searchQuery: '',
+  searchMatches: [],
+  activeSearchIndex: -1
 };
 
 const systemColorScheme = window.matchMedia('(prefers-color-scheme: dark)');
+
+hljs.registerLanguage('bash', bash);
+hljs.registerLanguage('css', css);
+hljs.registerLanguage('dockerfile', dockerfile);
+hljs.registerLanguage('go', go);
+hljs.registerLanguage('java', java);
+hljs.registerLanguage('javascript', javascript);
+hljs.registerLanguage('json', json);
+hljs.registerLanguage('markdown', markdown);
+hljs.registerLanguage('python', python);
+hljs.registerLanguage('ruby', ruby);
+hljs.registerLanguage('rust', rust);
+hljs.registerLanguage('sql', sql);
+hljs.registerLanguage('typescript', typescript);
+hljs.registerLanguage('xml', xml);
+hljs.registerLanguage('yaml', yaml);
 
 marked.setOptions({
   gfm: true,
@@ -45,6 +79,10 @@ app.innerHTML = `
         <div class="file-name" id="file-name">Untitled Preview</div>
         <div class="file-path" id="file-path">Open or drop a Markdown file</div>
       </div>
+      <form class="search-form" id="search-form" role="search">
+        <label class="sr-only" for="search-input">Search</label>
+        <input class="search-input" id="search-input" type="search" placeholder="Search" autocomplete="off" />
+      </form>
       <div class="toolbar-actions">
         <button class="icon-button" id="open-file" title="Open Markdown" aria-label="Open Markdown">
           <span aria-hidden="true">⌘O</span>
@@ -73,6 +111,8 @@ const previewEl = document.querySelector('#preview');
 const themeSelect = document.querySelector('#theme-select');
 const zoomValue = document.querySelector('#zoom-reset');
 const dropOverlay = document.querySelector('#drop-overlay');
+const searchForm = document.querySelector('#search-form');
+const searchInput = document.querySelector('#search-input');
 
 themeSelect.innerHTML = themes
   .map((theme) => `<option value="${theme.id}">${theme.label}</option>`)
@@ -99,13 +139,28 @@ document.querySelector('#zoom-out').addEventListener('click', zoomOut);
 document.querySelector('#zoom-in').addEventListener('click', zoomIn);
 document.querySelector('#zoom-reset').addEventListener('click', resetZoom);
 
+searchForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  searchNext();
+});
+
+searchInput.addEventListener('input', () => {
+  resetSearchState();
+});
+
 window.markdownReader.onFileOpen(openFile);
 window.markdownReader.onZoomIn(zoomIn);
 window.markdownReader.onZoomOut(zoomOut);
 window.markdownReader.onZoomReset(resetZoom);
+window.markdownReader.onSearchFocus(focusSearch);
 
 window.addEventListener('keydown', (event) => {
   if (!event.metaKey && !event.ctrlKey) return;
+
+  if (event.key.toLowerCase() === 'f') {
+    event.preventDefault();
+    focusSearch();
+  }
 
   if (event.key === '+' || event.key === '=') {
     event.preventDefault();
@@ -155,6 +210,8 @@ function openFile(file) {
   state.fileName = file.name;
   state.filePath = file.path;
   state.markdown = file.content;
+  resetSearchState();
+  searchInput.value = '';
   render();
 }
 
@@ -177,6 +234,8 @@ function setZoom(value) {
 }
 
 function render() {
+  resetSearchState();
+
   const activeTheme = resolveTheme(state.themePreference);
   document.documentElement.dataset.theme = activeTheme.id;
   document.documentElement.dataset.mode = activeTheme.mode;
@@ -200,6 +259,141 @@ function render() {
   }
 
   renderZoom();
+}
+
+function focusSearch() {
+  searchInput.focus();
+  searchInput.select();
+}
+
+function searchNext() {
+  const query = searchInput.value;
+
+  if (!query) {
+    resetSearchState();
+    return;
+  }
+
+  if (state.searchQuery !== query || state.searchMatches.length === 0) {
+    state.searchQuery = query;
+    state.searchMatches = collectSearchMatches(query);
+    state.activeSearchIndex = -1;
+    renderSearchHighlights();
+  }
+
+  if (state.searchMatches.length === 0 || state.activeSearchIndex >= state.searchMatches.length - 1) {
+    window.alert('no more entries');
+    return;
+  }
+
+  state.activeSearchIndex += 1;
+  renderSearchHighlights();
+  scrollActiveSearchMatchIntoView();
+}
+
+function collectSearchMatches(query) {
+  const textNodes = [];
+  const walker = document.createTreeWalker(previewEl, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      return node.nodeValue ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+    }
+  });
+
+  let text = '';
+  let currentNode = walker.nextNode();
+
+  while (currentNode) {
+    const start = text.length;
+    text += currentNode.nodeValue;
+    textNodes.push({
+      node: currentNode,
+      start,
+      end: text.length
+    });
+    currentNode = walker.nextNode();
+  }
+
+  const ranges = [];
+  const haystack = text.toLowerCase();
+  const needle = query.toLowerCase();
+  let index = haystack.indexOf(needle);
+
+  while (index !== -1) {
+    const start = getTextPoint(textNodes, index);
+    const end = getTextPoint(textNodes, index + query.length);
+
+    if (start && end) {
+      const range = document.createRange();
+      range.setStart(start.node, start.offset);
+      range.setEnd(end.node, end.offset);
+      ranges.push(range);
+    }
+
+    index = haystack.indexOf(needle, index + needle.length);
+  }
+
+  return ranges;
+}
+
+function getTextPoint(textNodes, offset) {
+  for (const textNode of textNodes) {
+    if (offset >= textNode.start && offset <= textNode.end) {
+      return {
+        node: textNode.node,
+        offset: offset - textNode.start
+      };
+    }
+  }
+
+  const lastNode = textNodes.at(-1);
+  if (!lastNode) return null;
+
+  return {
+    node: lastNode.node,
+    offset: lastNode.end - lastNode.start
+  };
+}
+
+function renderSearchHighlights() {
+  if (!window.CSS?.highlights || !window.Highlight) return;
+
+  window.CSS.highlights.delete('search-result');
+  window.CSS.highlights.delete('active-search-result');
+
+  if (state.searchMatches.length > 0) {
+    window.CSS.highlights.set('search-result', new Highlight(...state.searchMatches));
+  }
+
+  const activeMatch = state.searchMatches[state.activeSearchIndex];
+  if (activeMatch) {
+    window.CSS.highlights.set('active-search-result', new Highlight(activeMatch));
+  }
+}
+
+function scrollActiveSearchMatchIntoView() {
+  const activeMatch = state.searchMatches[state.activeSearchIndex];
+  const matchRect = activeMatch?.getBoundingClientRect();
+  const viewerFrame = document.querySelector('.viewer-frame');
+
+  if (!activeMatch || !matchRect || !viewerFrame) return;
+
+  const viewerRect = viewerFrame.getBoundingClientRect();
+  viewerFrame.scrollBy({
+    top: matchRect.top - viewerRect.top - viewerFrame.clientHeight / 2 + matchRect.height / 2,
+    left: matchRect.left - viewerRect.left - viewerFrame.clientWidth / 2 + matchRect.width / 2,
+    behavior: 'smooth'
+  });
+}
+
+function resetSearchState() {
+  state.searchQuery = '';
+  state.searchMatches = [];
+  state.activeSearchIndex = -1;
+
+  if (window.CSS?.highlights) {
+    window.CSS.highlights.delete('search-result');
+    window.CSS.highlights.delete('active-search-result');
+  }
 }
 
 function resolveTheme(themePreference) {

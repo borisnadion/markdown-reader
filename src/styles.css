@@ -33,6 +33,7 @@ body {
 }
 
 button,
+input,
 select {
   font: inherit;
 }
@@ -52,7 +53,7 @@ select {
   border-bottom: 1px solid var(--toolbar-border);
   display: grid;
   gap: 16px;
-  grid-template-columns: 76px minmax(120px, 1fr) auto;
+  grid-template-columns: 76px minmax(120px, 1fr) minmax(170px, 260px) auto;
   padding: 12px 18px 12px 20px;
   position: relative;
   z-index: 2;
@@ -91,6 +92,33 @@ select {
   align-items: center;
   display: flex;
   gap: 10px;
+}
+
+.search-form {
+  -webkit-app-region: no-drag;
+  min-width: 0;
+}
+
+.search-input {
+  -webkit-app-region: no-drag;
+  background: var(--control-bg);
+  border: 1px solid var(--control-border);
+  border-radius: 7px;
+  color: var(--control-fg);
+  height: 34px;
+  min-width: 0;
+  padding: 0 10px;
+  width: 100%;
+}
+
+.search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.search-input:focus {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  outline-offset: 0;
 }
 
 .icon-button,
@@ -164,6 +192,16 @@ select {
   transform-origin: top left;
 }
 
+::highlight(search-result) {
+  background: color-mix(in srgb, #facc15 52%, transparent);
+  color: inherit;
+}
+
+::highlight(active-search-result) {
+  background: #facc15;
+  color: #111827;
+}
+
 .drop-overlay {
   align-items: center;
   background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -196,7 +234,7 @@ select {
 @media (max-width: 700px) {
   .toolbar {
     gap: 10px;
-    grid-template-columns: 68px minmax(80px, 1fr) auto;
+    grid-template-columns: 68px minmax(80px, 1fr) minmax(120px, 160px) auto;
     padding-right: 12px;
   }
 
@@ -219,8 +257,19 @@ select {
 
   .icon-button,
   .zoom-value,
+  .search-input,
   .select-wrap select {
     height: 32px;
+  }
+}
+
+@media (max-width: 620px) {
+  .toolbar {
+    grid-template-columns: 68px minmax(80px, 1fr) minmax(120px, 1fr);
+  }
+
+  .toolbar-actions {
+    display: none;
   }
 }
 

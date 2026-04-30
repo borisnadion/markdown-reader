@@ -135,6 +135,24 @@ function buildMenu() {
       ]
     },
     {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+        { type: 'separator' },
+        {
+          label: 'Find',
+          accelerator: 'CommandOrControl+F',
+          click: () => mainWindow?.webContents.send('search:focus')
+        }
+      ]
+    },
+    {
       label: 'View',
       submenu: [
         {
