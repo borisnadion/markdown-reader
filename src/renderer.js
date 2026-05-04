@@ -41,6 +41,9 @@ const state = {
   searchMatches: [],
   activeSearchIndex: -1
 };
+
+const BASE_CONTENT_WIDTH = 900;
+
 let nextDocumentId = 1;
 
 const systemColorScheme = window.matchMedia('(prefers-color-scheme: dark)');
@@ -500,6 +503,7 @@ function resolveTheme(themePreference) {
 
 function renderZoom() {
   previewEl.style.zoom = state.zoom;
+  previewEl.style.setProperty('--content-width', `${BASE_CONTENT_WIDTH * state.zoom}px`);
   zoomValue.textContent = `${Math.round(state.zoom * 100)}%`;
 }
 

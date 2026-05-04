@@ -235,7 +235,7 @@ select {
 
 .markdown-body {
   margin: 0 auto;
-  max-width: 900px;
+  max-width: var(--content-width, 900px);
   min-height: 100%;
   transform-origin: top left;
 }
