@@ -43,6 +43,7 @@ const state = {
 };
 
 const BASE_CONTENT_WIDTH = 900;
+const ZOOM_LEVELS = Array.from({ length: 21 }, (_, index) => Number((0.5 + index * 0.1).toFixed(1)));
 
 let nextDocumentId = 1;
 
@@ -293,11 +294,11 @@ function getActiveDocument() {
 }
 
 function zoomIn() {
-  setZoom(state.zoom + 0.1);
+  setZoomLevel(getZoomLevelIndex(state.zoom) + 1);
 }
 
 function zoomOut() {
-  setZoom(state.zoom - 0.1);
+  setZoomLevel(getZoomLevelIndex(state.zoom) - 1);
 }
 
 function resetZoom() {
@@ -305,9 +306,26 @@ function resetZoom() {
 }
 
 function setZoom(value) {
-  state.zoom = Math.min(2.5, Math.max(0.5, Number(value.toFixed(2))));
+  state.zoom = getNearestZoomLevel(value);
   localStorage.setItem('zoom', String(state.zoom));
   renderZoom();
+}
+
+function setZoomLevel(index) {
+  const nextIndex = Math.min(ZOOM_LEVELS.length - 1, Math.max(0, index));
+  setZoom(ZOOM_LEVELS[nextIndex]);
+}
+
+function getZoomLevelIndex(value) {
+  return ZOOM_LEVELS.indexOf(getNearestZoomLevel(value));
+}
+
+function getNearestZoomLevel(value) {
+  const zoom = Number.isFinite(value) ? value : 1;
+
+  return ZOOM_LEVELS.reduce((nearest, level) =>
+    Math.abs(level - zoom) < Math.abs(nearest - zoom) ? level : nearest
+  );
 }
 
 function render() {
@@ -503,7 +521,7 @@ function resolveTheme(themePreference) {
 
 function renderZoom() {
   previewEl.style.zoom = state.zoom;
-  previewEl.style.setProperty('--content-width', `${BASE_CONTENT_WIDTH * state.zoom}px`);
+  previewEl.style.setProperty('--content-width', `${Math.round(BASE_CONTENT_WIDTH * state.zoom)}px`);
   zoomValue.textContent = `${Math.round(state.zoom * 100)}%`;
 }
 
