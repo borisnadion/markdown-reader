@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -35,11 +35,17 @@ for (const [fileName, size] of icons) {
   });
 }
 
-execFileSync('iconutil', ['-c', 'icns', iconsetDir, '-o', icnsPath], {
-  stdio: 'inherit'
-});
+try {
+  execFileSync('iconutil', ['-c', 'icns', iconsetDir, '-o', icnsPath], {
+    stdio: 'inherit'
+  });
 
-console.log(`Created ${path.relative(repoRoot, icnsPath)}`);
+  console.log(`Created ${path.relative(repoRoot, icnsPath)}`);
+} catch (error) {
+  if (!existsSync(icnsPath)) throw error;
+
+  console.warn(`Keeping existing ${path.relative(repoRoot, icnsPath)} because iconutil rejected the generated iconset.`);
+}
 
 function rasterizeSvg() {
   if (commandExists('rsvg-convert')) {

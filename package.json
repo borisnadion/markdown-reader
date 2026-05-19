@@ -9,8 +9,9 @@
     "dev": "node scripts/dev.mjs",
     "start": "electron .",
     "build": "vite build",
+    "quicklook": "node scripts/build-quicklook.mjs",
     "icons": "node scripts/make-icons.mjs",
-    "dist:mac": "npm run icons && npm run build && electron-builder --mac dir"
+    "dist:mac": "npm run icons && npm run build && npm run quicklook && electron-builder --mac dir"
   },
   "dependencies": {
     "dompurify": "^3.2.3",
@@ -34,27 +35,64 @@
       "electron/**/*",
       "package.json"
     ],
-    "fileAssociations": [
-      {
-        "ext": [
-          "md",
-          "markdown",
-          "mdown",
-          "mkd"
-        ],
-        "name": "Markdown Document",
-        "role": "Viewer",
-        "rank": "Default"
-      }
-    ],
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "build/icon.icns",
+      "extraFiles": [
+        {
+          "from": "build/quicklook/MarkdownQuickLook.appex",
+          "to": "PlugIns/MarkdownQuickLook.appex"
+        }
+      ],
+      "binaries": [
+        "build/quicklook/MarkdownQuickLook.appex/Contents/MacOS/MarkdownQuickLook"
+      ],
+      "minimumSystemVersion": "26.5",
+      "hardenedRuntime": true,
       "extendInfo": {
         "CFBundleName": "Markdown Reader",
         "CFBundleDisplayName": "Markdown Reader",
         "CFBundleExecutable": "Markdown Reader",
-        "CFBundleIdentifier": "com.markdownreader.app"
+        "CFBundleIdentifier": "com.markdownreader.app",
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeExtensions": [
+              "md",
+              "markdown",
+              "mdown",
+              "mkd"
+            ],
+            "CFBundleTypeIconFile": "icon.icns",
+            "CFBundleTypeName": "Markdown Document",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Default",
+            "LSItemContentTypes": [
+              "net.daringfireball.markdown"
+            ]
+          }
+        ],
+        "UTImportedTypeDeclarations": [
+          {
+            "UTTypeConformsTo": [
+              "public.plain-text",
+              "public.text"
+            ],
+            "UTTypeDescription": "Markdown Document",
+            "UTTypeIdentifier": "net.daringfireball.markdown",
+            "UTTypeTagSpecification": {
+              "public.filename-extension": [
+                "md",
+                "markdown",
+                "mdown",
+                "mkd"
+              ],
+              "public.mime-type": [
+                "text/markdown",
+                "text/x-markdown"
+              ]
+            }
+          }
+        ]
       },
       "target": [
         "dir"
