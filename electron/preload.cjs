@@ -1,11 +1,18 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('markdownReader', {
   openMarkdown: () => ipcRenderer.invoke('dialog:openMarkdown'),
+  getPathForFile: (file) => webUtils.getPathForFile(file),
+  watchFiles: (filePaths) => ipcRenderer.invoke('file:watch', filePaths),
   onFileOpen: (callback) => {
     const listener = (_event, file) => callback(file);
     ipcRenderer.on('file:open', listener);
     return () => ipcRenderer.removeListener('file:open', listener);
+  },
+  onFileChange: (callback) => {
+    const listener = (_event, file) => callback(file);
+    ipcRenderer.on('file:change', listener);
+    return () => ipcRenderer.removeListener('file:change', listener);
   },
   onZoomIn: (callback) => {
     const listener = () => callback();

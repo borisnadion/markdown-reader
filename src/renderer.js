@@ -162,6 +162,7 @@ searchInput.addEventListener('input', () => {
 });
 
 window.markdownReader.onFileOpen(openFiles);
+window.markdownReader.onFileChange(updateFile);
 window.markdownReader.onZoomIn(zoomIn);
 window.markdownReader.onZoomOut(zoomOut);
 window.markdownReader.onZoomReset(resetZoom);
@@ -223,7 +224,7 @@ window.addEventListener('drop', async (event) => {
     await Promise.all(
       droppedFiles.map(async (file) => ({
         name: file.name,
-        path: file.path || '',
+        path: window.markdownReader.getPathForFile(file) || file.path || '',
         content: await file.text()
       }))
     )
@@ -233,6 +234,8 @@ window.addEventListener('drop', async (event) => {
 function openFiles(files) {
   const documents = (Array.isArray(files) ? files : [files]).map(normalizeDocument).filter(Boolean);
   if (documents.length === 0) return;
+
+  watchDocumentPaths(documents);
 
   for (const openDocument of documents) {
     const existingIndex = openDocument.path
@@ -252,6 +255,30 @@ function openFiles(files) {
   resetSearchState();
   searchInput.value = '';
   render();
+}
+
+function updateFile(file) {
+  const updatedDocument = normalizeDocument(file);
+  if (!updatedDocument?.path) return;
+
+  const existingIndex = state.documents.findIndex(
+    (candidate) => candidate.path === updatedDocument.path
+  );
+  if (existingIndex === -1) return;
+
+  const existingDocument = state.documents[existingIndex];
+  state.documents[existingIndex] = { ...updatedDocument, id: existingDocument.id };
+
+  if (existingDocument.id === state.activeDocumentId) {
+    render();
+  }
+}
+
+function watchDocumentPaths(documents) {
+  const paths = documents.map((document) => document.path).filter(Boolean);
+  if (paths.length > 0) {
+    void window.markdownReader.watchFiles(paths);
+  }
 }
 
 function normalizeDocument(file) {

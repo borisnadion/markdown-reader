@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
-import { existsSync } from 'node:fs';
+import { existsSync, watch } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,9 @@ const APP_ICON = path.join(__dirname, '..', 'build', 'icon.png');
 
 let mainWindow = null;
 let pendingOpenPaths = [];
+const watchedFiles = new Set();
+const directoryWatchers = new Map();
+const fileChangeTimers = new Map();
 
 const isDev = Boolean(process.env.ELECTRON_START_URL);
 
@@ -61,6 +64,10 @@ function createWindow() {
       await sendMarkdownFiles(filePaths);
     }
   });
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
 }
 
 function configureAppIdentity() {
@@ -80,16 +87,79 @@ function setWindowPreset(width, height) {
 }
 
 async function readMarkdownFile(filePath) {
-  const content = await fs.readFile(filePath, 'utf8');
+  const normalizedPath = path.resolve(filePath);
+  const content = await fs.readFile(normalizedPath, 'utf8');
   return {
-    path: filePath,
-    name: path.basename(filePath),
+    path: normalizedPath,
+    name: path.basename(normalizedPath),
     content
   };
 }
 
 async function readMarkdownFiles(filePaths) {
   return Promise.all(filePaths.map((filePath) => readMarkdownFile(filePath)));
+}
+
+function normalizeWatchPath(filePath) {
+  return filePath ? path.resolve(filePath) : '';
+}
+
+function watchMarkdownFiles(filePaths) {
+  for (const filePath of filePaths) {
+    const normalizedPath = normalizeWatchPath(filePath);
+    if (!normalizedPath) continue;
+
+    watchedFiles.add(normalizedPath);
+    watchMarkdownDirectory(path.dirname(normalizedPath));
+  }
+}
+
+function watchMarkdownDirectory(directoryPath) {
+  if (directoryWatchers.has(directoryPath)) return;
+
+  try {
+    const watcher = watch(directoryPath, (_eventType, filename) => {
+      if (!filename) return;
+
+      const changedPath = path.join(directoryPath, filename.toString());
+      if (watchedFiles.has(changedPath)) {
+        scheduleFileChange(changedPath);
+      }
+    });
+
+    watcher.on('error', () => closeDirectoryWatcher(directoryPath));
+    directoryWatchers.set(directoryPath, watcher);
+  } catch {
+    // The file can still be viewed if the containing directory is not watchable.
+  }
+}
+
+function closeDirectoryWatcher(directoryPath) {
+  const watcher = directoryWatchers.get(directoryPath);
+  if (!watcher) return;
+
+  watcher.close();
+  directoryWatchers.delete(directoryPath);
+}
+
+function scheduleFileChange(filePath) {
+  clearTimeout(fileChangeTimers.get(filePath));
+
+  fileChangeTimers.set(
+    filePath,
+    setTimeout(async () => {
+      fileChangeTimers.delete(filePath);
+
+      try {
+        const file = await readMarkdownFile(filePath);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('file:change', file);
+        }
+      } catch {
+        // Ignore transient saves and deleted files; a future write will refresh the view.
+      }
+    }, 100)
+  );
 }
 
 async function sendMarkdownFiles(filePaths) {
@@ -99,6 +169,7 @@ async function sendMarkdownFiles(filePaths) {
   }
 
   const files = await readMarkdownFiles(filePaths);
+  watchMarkdownFiles(filePaths);
   mainWindow.webContents.send('file:open', files);
 }
 
@@ -226,7 +297,13 @@ ipcMain.handle('dialog:openMarkdown', async () => {
   });
 
   if (result.canceled || result.filePaths.length === 0) return [];
-  return readMarkdownFiles(result.filePaths);
+  const files = await readMarkdownFiles(result.filePaths);
+  watchMarkdownFiles(result.filePaths);
+  return files;
+});
+
+ipcMain.handle('file:watch', (_event, filePaths) => {
+  watchMarkdownFiles(Array.isArray(filePaths) ? filePaths : [filePaths]);
 });
 
 app.whenReady().then(() => {
