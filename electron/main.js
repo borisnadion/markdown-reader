@@ -7,9 +7,11 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_NAME = 'Markdown Reader';
 const APP_ICON = path.join(__dirname, '..', 'build', 'icon.png');
+const MARKDOWN_FILE_PATTERN = /\.(md|markdown|mdown|mkd)$/i;
 
 let mainWindow = null;
 let pendingOpenPaths = [];
+let rendererReady = false;
 const watchedFiles = new Set();
 const directoryWatchers = new Map();
 const fileChangeTimers = new Map();
@@ -19,7 +21,14 @@ const isDev = Boolean(process.env.ELECTRON_START_URL);
 app.setName(APP_NAME);
 process.title = APP_NAME;
 
+app.on('open-file', (event, filePath) => {
+  event.preventDefault();
+  sendMarkdownFiles([filePath]);
+});
+
 function createWindow() {
+  rendererReady = false;
+
   mainWindow = new BrowserWindow({
     title: APP_NAME,
     icon: existsSync(APP_ICON) ? APP_ICON : undefined,
@@ -38,12 +47,6 @@ function createWindow() {
     }
   });
 
-  if (isDev) {
-    mainWindow.loadURL(process.env.ELECTRON_START_URL);
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
-  }
-
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
@@ -57,16 +60,19 @@ function createWindow() {
     }
   });
 
-  mainWindow.webContents.once('did-finish-load', async () => {
-    if (pendingOpenPaths.length > 0) {
-      const filePaths = pendingOpenPaths;
-      pendingOpenPaths = [];
-      await sendMarkdownFiles(filePaths);
-    }
+  mainWindow.webContents.on('did-start-loading', () => {
+    rendererReady = false;
   });
+
+  if (isDev) {
+    mainWindow.loadURL(process.env.ELECTRON_START_URL);
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  }
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    rendererReady = false;
   });
 }
 
@@ -84,6 +90,10 @@ function setWindowPreset(width, height) {
   if (!mainWindow) return;
   mainWindow.setSize(width, height, true);
   mainWindow.center();
+}
+
+function getMarkdownFilePaths(paths) {
+  return paths.filter((candidate) => MARKDOWN_FILE_PATTERN.test(candidate) && existsSync(candidate));
 }
 
 async function readMarkdownFile(filePath) {
@@ -163,7 +173,9 @@ function scheduleFileChange(filePath) {
 }
 
 async function sendMarkdownFiles(filePaths) {
-  if (!mainWindow) {
+  if (filePaths.length === 0) return;
+
+  if (!mainWindow || !rendererReady) {
     pendingOpenPaths.push(...filePaths);
     return;
   }
@@ -171,6 +183,14 @@ async function sendMarkdownFiles(filePaths) {
   const files = await readMarkdownFiles(filePaths);
   watchMarkdownFiles(filePaths);
   mainWindow.webContents.send('file:open', files);
+}
+
+async function flushPendingOpenPaths() {
+  if (!mainWindow || !rendererReady || pendingOpenPaths.length === 0) return;
+
+  const filePaths = pendingOpenPaths;
+  pendingOpenPaths = [];
+  await sendMarkdownFiles(filePaths);
 }
 
 function buildMenu() {
@@ -306,19 +326,22 @@ ipcMain.handle('file:watch', (_event, filePaths) => {
   watchMarkdownFiles(Array.isArray(filePaths) ? filePaths : [filePaths]);
 });
 
+ipcMain.handle('renderer:ready', async (event) => {
+  if (mainWindow && event.sender === mainWindow.webContents) {
+    rendererReady = true;
+    await flushPendingOpenPaths();
+  }
+});
+
 app.whenReady().then(() => {
   configureAppIdentity();
   buildMenu();
   createWindow();
+  sendMarkdownFiles(getMarkdownFilePaths(process.argv));
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
-});
-
-app.on('open-file', (event, filePath) => {
-  event.preventDefault();
-  sendMarkdownFiles([filePath]);
 });
 
 app.on('window-all-closed', () => {

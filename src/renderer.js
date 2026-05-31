@@ -44,8 +44,12 @@ const state = {
 
 const BASE_CONTENT_WIDTH = 900;
 const ZOOM_LEVELS = Array.from({ length: 21 }, (_, index) => Number((0.5 + index * 0.1).toFixed(1)));
+const MERMAID_LANGUAGE = 'mermaid';
+const MERMAID_RENDER_ERROR_MESSAGE = 'cannot render mermaid diafram';
 
 let nextDocumentId = 1;
+let renderGeneration = 0;
+let mermaidModulePromise = null;
 
 const systemColorScheme = window.matchMedia('(prefers-color-scheme: dark)');
 
@@ -65,13 +69,28 @@ hljs.registerLanguage('typescript', typescript);
 hljs.registerLanguage('xml', xml);
 hljs.registerLanguage('yaml', yaml);
 
+marked.use({
+  renderer: {
+    code(token) {
+      const language = normalizeCodeLanguage(token.lang);
+
+      if (language === MERMAID_LANGUAGE) {
+        return [
+          '<div class="mermaid-diagram" data-mermaid-diagram role="img" aria-label="Mermaid diagram">',
+          '<div class="mermaid-status">Rendering diagram...</div>',
+          `<pre class="mermaid-source"><code>${escapeHtml(token.text)}</code></pre>`,
+          '</div>\n'
+        ].join('');
+      }
+
+      return renderHighlightedCode(token.text, language);
+    }
+  }
+});
+
 marked.setOptions({
   gfm: true,
-  breaks: false,
-  highlight(code, language) {
-    const normalizedLanguage = hljs.getLanguage(language) ? language : 'plaintext';
-    return hljs.highlight(code, { language: normalizedLanguage }).value;
-  }
+  breaks: false
 });
 
 const app = document.querySelector('#app');
@@ -169,6 +188,7 @@ window.markdownReader.onZoomReset(resetZoom);
 window.markdownReader.onSearchFocus(focusSearch);
 window.markdownReader.onNextDocument(switchToNextDocument);
 window.markdownReader.onPreviousDocument(() => switchToNextDocument(-1));
+void window.markdownReader.ready();
 
 window.addEventListener('keydown', (event) => {
   if (!event.metaKey && !event.ctrlKey) return;
@@ -320,6 +340,36 @@ function getActiveDocument() {
   return state.documents.find((document) => document.id === state.activeDocumentId) || null;
 }
 
+function normalizeCodeLanguage(language) {
+  return (language || '').match(/^\S*/)?.[0]?.toLowerCase() || '';
+}
+
+function renderHighlightedCode(code, language) {
+  const highlightedCode = language && hljs.getLanguage(language)
+    ? hljs.highlight(code, { language }).value
+    : escapeHtml(code);
+  const languageClass = language ? ` language-${escapeHtml(language)}` : '';
+
+  return `<pre><code class="hljs${languageClass}">${highlightedCode}</code></pre>\n`;
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => {
+    switch (character) {
+      case '&':
+        return '&amp;';
+      case '<':
+        return '&lt;';
+      case '>':
+        return '&gt;';
+      case '"':
+        return '&quot;';
+      default:
+        return '&#39;';
+    }
+  });
+}
+
 function zoomIn() {
   setZoomLevel(getZoomLevelIndex(state.zoom) + 1);
 }
@@ -358,6 +408,7 @@ function getNearestZoomLevel(value) {
 function render() {
   resetSearchState();
 
+  const currentRenderGeneration = ++renderGeneration;
   const activeTheme = resolveTheme(state.themePreference);
   const activeDocument = getActiveDocument();
   document.documentElement.dataset.theme = activeTheme.id;
@@ -371,7 +422,7 @@ function render() {
   const html = marked.parse(activeDocument?.content || sampleMarkdown());
   previewEl.innerHTML = DOMPurify.sanitize(html, {
     USE_PROFILES: { html: true },
-    ADD_ATTR: ['target', 'rel']
+    ADD_ATTR: ['target', 'rel', 'data-mermaid-diagram', 'role', 'aria-label']
   });
 
   for (const link of previewEl.querySelectorAll('a[href]')) {
@@ -383,6 +434,106 @@ function render() {
   }
 
   renderZoom();
+  void renderMermaidDiagrams(activeTheme, currentRenderGeneration);
+}
+
+async function renderMermaidDiagrams(activeTheme, currentRenderGeneration) {
+  const diagrams = [...previewEl.querySelectorAll('[data-mermaid-diagram]')];
+  if (diagrams.length === 0) return;
+
+  let mermaid;
+  try {
+    mermaid = await getMermaid();
+  } catch (error) {
+    if (currentRenderGeneration !== renderGeneration) return;
+    for (const diagram of diagrams) {
+      if (diagram.isConnected) renderMermaidError(diagram);
+    }
+    return;
+  }
+
+  if (currentRenderGeneration !== renderGeneration) return;
+  configureMermaid(mermaid, activeTheme);
+
+  for (const [index, diagram] of diagrams.entries()) {
+    const source = diagram.querySelector('.mermaid-source code')?.textContent?.trim();
+    if (!source) continue;
+
+    try {
+      const { svg } = await mermaid.render(
+        `mermaid-${currentRenderGeneration}-${index}`,
+        source,
+        diagram
+      );
+
+      if (currentRenderGeneration !== renderGeneration || !diagram.isConnected) return;
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'mermaid-svg';
+      wrapper.innerHTML = sanitizeMermaidSvg(svg);
+      diagram.replaceChildren(wrapper);
+    } catch (error) {
+      if (currentRenderGeneration !== renderGeneration || !diagram.isConnected) return;
+      renderMermaidError(diagram);
+    }
+  }
+}
+
+function getMermaid() {
+  mermaidModulePromise ||= import('mermaid').then((module) => module.default);
+  return mermaidModulePromise;
+}
+
+function configureMermaid(mermaid, activeTheme) {
+  const styles = getComputedStyle(document.documentElement);
+  const cssValue = (name) => styles.getPropertyValue(name).trim();
+
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: 'strict',
+    htmlLabels: false,
+    theme: activeTheme.mode === 'dark' ? 'dark' : 'default',
+    flowchart: {
+      htmlLabels: false
+    },
+    themeVariables: {
+      background: cssValue('--preview-bg'),
+      primaryColor: cssValue('--preview-code-bg'),
+      primaryTextColor: cssValue('--preview-fg'),
+      primaryBorderColor: cssValue('--preview-border'),
+      lineColor: cssValue('--preview-muted'),
+      tertiaryColor: cssValue('--preview-bg'),
+      fontFamily: styles.fontFamily
+    }
+  });
+}
+
+function sanitizeMermaidSvg(svg) {
+  return DOMPurify.sanitize(svg, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+    ADD_TAGS: ['style'],
+    ADD_ATTR: ['aria-roledescription', 'role', 'viewBox', 'xmlns']
+  });
+}
+
+function renderMermaidError(diagram) {
+  const source = diagram.querySelector('.mermaid-source code')?.textContent || '';
+
+  diagram.classList.add('is-error');
+
+  const message = document.createElement('div');
+  message.className = 'mermaid-error';
+  message.textContent = MERMAID_RENDER_ERROR_MESSAGE;
+
+  const sourceEl = document.createElement('pre');
+  sourceEl.className = 'mermaid-source';
+
+  const codeEl = document.createElement('code');
+  codeEl.className = 'hljs language-mermaid';
+  codeEl.textContent = source;
+  sourceEl.append(codeEl);
+
+  diagram.replaceChildren(message, sourceEl);
 }
 
 function renderDocumentTabs() {
@@ -563,6 +714,7 @@ Open a Markdown file with **Command+O** or drop one into this window.
 - Multiple open files with Command+\` switching
 - Light and dark themes
 - Syntax highlighting
+- Mermaid diagrams
 - Browser-style zoom for text, tables, and images
 
 \`\`\`js

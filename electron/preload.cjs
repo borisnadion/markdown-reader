@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('markdownReader', {
+  ready: () => ipcRenderer.invoke('renderer:ready'),
   openMarkdown: () => ipcRenderer.invoke('dialog:openMarkdown'),
   getPathForFile: (file) => webUtils.getPathForFile(file),
   watchFiles: (filePaths) => ipcRenderer.invoke('file:watch', filePaths),
