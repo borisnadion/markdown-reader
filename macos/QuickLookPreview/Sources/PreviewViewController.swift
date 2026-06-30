@@ -4,6 +4,14 @@ import QuickLookUI
 final class PreviewViewController: NSViewController, QLPreviewingController {
   private var textView: NSTextView!
 
+  private struct FrontMatterEntry {
+    let key: String
+    let label: String
+    let value: String
+    let values: [String]
+    let isList: Bool
+  }
+
   override func loadView() {
     let scrollView = NSScrollView()
     scrollView.drawsBackground = true
@@ -113,6 +121,62 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
 
           .markdown-body > :first-child {
             margin-top: 0;
+          }
+
+          .front-matter {
+            background: var(--preview-code-bg);
+            border: 1px solid var(--preview-border);
+            border-radius: 8px;
+            margin: 0 0 1.45rem;
+            padding: 14px 16px;
+          }
+
+          .front-matter-title {
+            color: var(--preview-fg);
+            font-size: 1.2rem;
+            font-weight: 700;
+            line-height: 1.35;
+            margin-bottom: 12px;
+          }
+
+          .front-matter-grid {
+            margin: 0;
+          }
+
+          .front-matter-row {
+            margin: 0 0 0.65rem;
+          }
+
+          .front-matter-row:last-child {
+            margin-bottom: 0;
+          }
+
+          .front-matter dt {
+            color: var(--preview-muted);
+            font-size: 0.74rem;
+            font-weight: 700;
+            letter-spacing: 0;
+            line-height: 1.7;
+            text-transform: uppercase;
+          }
+
+          .front-matter dd {
+            margin: 0;
+          }
+
+          .front-matter-chip {
+            background: var(--preview-bg);
+            border: 1px solid var(--preview-border);
+            border-radius: 999px;
+            display: inline-block;
+            font-size: 0.9rem;
+            line-height: 1.3;
+            margin: 0 6px 6px 0;
+            padding: 3px 9px;
+          }
+
+          .front-matter-empty {
+            color: var(--preview-muted);
           }
 
           h1,
@@ -237,7 +301,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
   }
 
   private func renderMarkdown(_ markdown: String, baseDirectory: URL) -> String {
-    let lines = markdown.replacingOccurrences(of: "\r\n", with: "\n").split(
+    let document = extractFrontMatter(from: markdown)
+    let lines = document.body.replacingOccurrences(of: "\r\n", with: "\n").split(
       separator: "\n",
       omittingEmptySubsequences: false
     ).map(String.init)
@@ -357,7 +422,217 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
 
     flushOpenBlocks()
 
-    return blocks.joined(separator: "\n")
+    let body = blocks.joined(separator: "\n")
+
+    guard let frontMatter = document.frontMatter, !frontMatter.isEmpty else {
+      return body
+    }
+
+    let header = renderFrontMatter(frontMatter)
+    return body.isEmpty ? header : "\(header)\n\(body)"
+  }
+
+  private func extractFrontMatter(from markdown: String) -> (frontMatter: [FrontMatterEntry]?, body: String) {
+    var source = markdown
+      .replacingOccurrences(of: "\r\n", with: "\n")
+      .replacingOccurrences(of: "\r", with: "\n")
+
+    if source.hasPrefix("\u{feff}") {
+      source.removeFirst()
+    }
+
+    let lines = source.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+
+    guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else {
+      return (nil, source)
+    }
+
+    guard let closingIndex = lines.indices.dropFirst().first(where: {
+      lines[$0].trimmingCharacters(in: .whitespaces) == "---"
+    }) else {
+      return (nil, source)
+    }
+
+    let frontMatter = parseFrontMatter(Array(lines[1..<closingIndex]))
+    let bodyLines = closingIndex + 1 < lines.count ? Array(lines[(closingIndex + 1)..<lines.count]) : []
+    var body = bodyLines.joined(separator: "\n")
+
+    while body.hasPrefix("\n") {
+      body.removeFirst()
+    }
+
+    return (frontMatter, body)
+  }
+
+  private func parseFrontMatter(_ lines: [String]) -> [FrontMatterEntry] {
+    var entries: [FrontMatterEntry] = []
+
+    for line in lines {
+      let trimmed = line.trimmingCharacters(in: .whitespaces)
+      guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
+      guard let separatorIndex = line.firstIndex(of: ":") else { continue }
+
+      let key = String(line[..<separatorIndex]).trimmingCharacters(in: .whitespaces)
+      guard !key.isEmpty else { continue }
+
+      let value = String(line[line.index(after: separatorIndex)...]).trimmingCharacters(in: .whitespaces)
+      let parsedValue = parseFrontMatterValue(value)
+
+      entries.append(
+        FrontMatterEntry(
+          key: key,
+          label: formatFrontMatterLabel(key),
+          value: value,
+          values: parsedValue.values,
+          isList: parsedValue.isList
+        )
+      )
+    }
+
+    return entries
+  }
+
+  private func parseFrontMatterValue(_ value: String) -> (values: [String], isList: Bool) {
+    let trimmed = value.trimmingCharacters(in: .whitespaces)
+
+    if trimmed.hasPrefix("["), trimmed.hasSuffix("]") {
+      let inner = String(trimmed.dropFirst().dropLast())
+      let values = splitInlineFrontMatterList(inner)
+        .map(normalizeFrontMatterScalar)
+        .filter { !$0.isEmpty }
+
+      return (values.isEmpty ? [""] : values, true)
+    }
+
+    return ([normalizeFrontMatterScalar(trimmed)], false)
+  }
+
+  private func splitInlineFrontMatterList(_ value: String) -> [String] {
+    var parts: [String] = []
+    var current = ""
+    var quote: Character?
+    var escaping = false
+
+    for character in value {
+      if let activeQuote = quote {
+        current.append(character)
+
+        if escaping {
+          escaping = false
+          continue
+        }
+
+        if character == "\\" {
+          escaping = true
+          continue
+        }
+
+        if character == activeQuote {
+          quote = nil
+        }
+
+        continue
+      }
+
+      if character == "\"" || character == "'" {
+        quote = character
+        current.append(character)
+        continue
+      }
+
+      if character == "," {
+        parts.append(current)
+        current = ""
+        continue
+      }
+
+      current.append(character)
+    }
+
+    parts.append(current)
+    return parts
+  }
+
+  private func normalizeFrontMatterScalar(_ value: String) -> String {
+    let trimmed = value.trimmingCharacters(in: .whitespaces)
+
+    guard trimmed.count >= 2,
+          let first = trimmed.first,
+          let last = trimmed.last,
+          (first == "\"" || first == "'"),
+          first == last
+    else {
+      return trimmed
+    }
+
+    return String(trimmed.dropFirst().dropLast()).replacingOccurrences(of: "\\\(first)", with: String(first))
+  }
+
+  private func formatFrontMatterLabel(_ key: String) -> String {
+    key
+      .replacingOccurrences(of: "_", with: " ")
+      .replacingOccurrences(of: "-", with: " ")
+      .split(separator: " ")
+      .map { word in
+        guard let first = word.first else { return "" }
+        return first.uppercased() + String(word.dropFirst())
+      }
+      .joined(separator: " ")
+  }
+
+  private func renderFrontMatter(_ entries: [FrontMatterEntry]) -> String {
+    let titleIndex = entries.firstIndex { $0.key.lowercased() == "title" }
+    let titleEntry = titleIndex.map { entries[$0] }
+    let detailEntries = entries.enumerated()
+      .filter { indexedEntry in
+        if let titleIndex = titleIndex {
+          return indexedEntry.offset != titleIndex
+        }
+
+        return true
+      }
+      .map(\.element)
+    let title = titleEntry?.values.first ?? titleEntry?.value ?? ""
+    var parts = ["<section class=\"front-matter\" aria-label=\"Document metadata\">"]
+
+    if !title.isEmpty {
+      parts.append("<div class=\"front-matter-title\">\(htmlEscaped(title))</div>")
+    }
+
+    if !detailEntries.isEmpty {
+      parts.append("<dl class=\"front-matter-grid\">")
+
+      for entry in detailEntries {
+        parts.append(renderFrontMatterEntry(entry))
+      }
+
+      parts.append("</dl>")
+    }
+
+    parts.append("</section>")
+    return parts.joined()
+  }
+
+  private func renderFrontMatterEntry(_ entry: FrontMatterEntry) -> String {
+    [
+      "<div class=\"front-matter-row\">",
+      "<dt>\(htmlEscaped(entry.label))</dt>",
+      "<dd>\(renderFrontMatterValue(entry))</dd>",
+      "</div>"
+    ].joined()
+  }
+
+  private func renderFrontMatterValue(_ entry: FrontMatterEntry) -> String {
+    if entry.isList || entry.values.count > 1 {
+      let chips = entry.values
+        .map { "<span class=\"front-matter-chip\">\(htmlEscaped($0))</span>" }
+        .joined()
+
+      return "<span class=\"front-matter-list\">\(chips)</span>"
+    }
+
+    let value = entry.values.first ?? entry.value
+    return value.isEmpty ? "<span class=\"front-matter-empty\">empty</span>" : htmlEscaped(value)
   }
 
   private func parseHeading(_ line: String) -> (level: Int, text: String)? {

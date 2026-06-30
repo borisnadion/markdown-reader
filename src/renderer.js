@@ -47,6 +47,7 @@ const ZOOM_LEVELS = Array.from({ length: 21 }, (_, index) => Number((0.5 + index
 const MERMAID_LANGUAGE = 'mermaid';
 const MERMAID_RENDER_ERROR_MESSAGE = 'cannot render mermaid diafram';
 const MARKDOWN_LINK_PATTERN = /\.(md|markdown|mdown|mkd)(?:[?#]|$)/i;
+const FRONT_MATTER_DELIMITER = '---';
 
 let nextDocumentId = 1;
 let renderGeneration = 0;
@@ -501,7 +502,7 @@ function render() {
   themeSelect.value = state.themePreference;
   renderDocumentTabs();
 
-  const html = marked.parse(activeDocument?.content || sampleMarkdown());
+  const html = renderMarkdownDocument(activeDocument?.content || sampleMarkdown());
   previewEl.innerHTML = DOMPurify.sanitize(html, {
     USE_PROFILES: { html: true },
     ADD_ATTR: ['target', 'rel', 'data-mermaid-diagram', 'role', 'aria-label']
@@ -517,6 +518,190 @@ function render() {
 
   renderZoom();
   void renderMermaidDiagrams(activeTheme, currentRenderGeneration);
+}
+
+function renderMarkdownDocument(markdown) {
+  const { frontMatter, body } = extractFrontMatter(markdown);
+  const bodyHtml = marked.parse(body);
+
+  if (!frontMatter?.entries.length) return bodyHtml;
+
+  return `${renderFrontMatter(frontMatter)}\n${bodyHtml}`;
+}
+
+function extractFrontMatter(markdown) {
+  const source = String(markdown || '').replace(/^\uFEFF/, '');
+  const lines = source.split(/\r\n|\n|\r/);
+
+  if (lines[0]?.trim() !== FRONT_MATTER_DELIMITER) {
+    return { frontMatter: null, body: source };
+  }
+
+  const closingIndex = lines.findIndex(
+    (line, index) => index > 0 && line.trim() === FRONT_MATTER_DELIMITER
+  );
+
+  if (closingIndex === -1) {
+    return { frontMatter: null, body: source };
+  }
+
+  return {
+    frontMatter: parseFrontMatter(lines.slice(1, closingIndex)),
+    body: lines.slice(closingIndex + 1).join('\n').replace(/^\n+/, '')
+  };
+}
+
+function parseFrontMatter(lines) {
+  const entries = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    const separatorIndex = line.indexOf(':');
+    if (separatorIndex === -1) continue;
+
+    const key = line.slice(0, separatorIndex).trim();
+    if (!key) continue;
+
+    const value = line.slice(separatorIndex + 1).trim();
+    const parsedValue = parseFrontMatterValue(value);
+
+    entries.push({
+      key,
+      label: formatFrontMatterLabel(key),
+      value,
+      values: parsedValue.values,
+      isList: parsedValue.isList
+    });
+  }
+
+  return { entries };
+}
+
+function parseFrontMatterValue(value) {
+  const trimmed = value.trim();
+
+  if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+    const values = splitInlineFrontMatterList(trimmed.slice(1, -1))
+      .map(normalizeFrontMatterScalar)
+      .filter(Boolean);
+
+    return { values: values.length > 0 ? values : [''], isList: true };
+  }
+
+  return { values: [normalizeFrontMatterScalar(trimmed)], isList: false };
+}
+
+function splitInlineFrontMatterList(value) {
+  const parts = [];
+  let current = '';
+  let quote = '';
+  let escaping = false;
+
+  for (const character of value) {
+    if (quote) {
+      current += character;
+
+      if (escaping) {
+        escaping = false;
+        continue;
+      }
+
+      if (character === '\\') {
+        escaping = true;
+        continue;
+      }
+
+      if (character === quote) quote = '';
+      continue;
+    }
+
+    if (character === '"' || character === "'") {
+      quote = character;
+      current += character;
+      continue;
+    }
+
+    if (character === ',') {
+      parts.push(current);
+      current = '';
+      continue;
+    }
+
+    current += character;
+  }
+
+  parts.push(current);
+  return parts;
+}
+
+function normalizeFrontMatterScalar(value) {
+  const trimmed = value.trim();
+  const quote = trimmed[0];
+
+  if (
+    trimmed.length >= 2 &&
+    (quote === '"' || quote === "'") &&
+    trimmed[trimmed.length - 1] === quote
+  ) {
+    return trimmed.slice(1, -1).replaceAll(`\\${quote}`, quote);
+  }
+
+  return trimmed;
+}
+
+function formatFrontMatterLabel(key) {
+  return key
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function renderFrontMatter(frontMatter) {
+  const titleIndex = frontMatter.entries.findIndex(
+    (entry) => entry.key.toLowerCase() === 'title'
+  );
+  const titleEntry = titleIndex === -1 ? null : frontMatter.entries[titleIndex];
+  const detailEntries = frontMatter.entries.filter((_, index) => index !== titleIndex);
+  const title = titleEntry?.values[0] || titleEntry?.value || '';
+  const parts = ['<section class="front-matter" aria-label="Document metadata">'];
+
+  if (title) {
+    parts.push(`<div class="front-matter-title">${escapeHtml(title)}</div>`);
+  }
+
+  if (detailEntries.length > 0) {
+    parts.push('<dl class="front-matter-grid">');
+    for (const entry of detailEntries) {
+      parts.push(renderFrontMatterEntry(entry));
+    }
+    parts.push('</dl>');
+  }
+
+  parts.push('</section>');
+  return parts.join('');
+}
+
+function renderFrontMatterEntry(entry) {
+  return [
+    '<div class="front-matter-row">',
+    `<dt>${escapeHtml(entry.label)}</dt>`,
+    `<dd>${renderFrontMatterValue(entry)}</dd>`,
+    '</div>'
+  ].join('');
+}
+
+function renderFrontMatterValue(entry) {
+  if (entry.isList || entry.values.length > 1) {
+    return [
+      '<span class="front-matter-list">',
+      ...entry.values.map((value) => `<span class="front-matter-chip">${escapeHtml(value)}</span>`),
+      '</span>'
+    ].join('');
+  }
+
+  const value = entry.values[0] || entry.value;
+  return value ? escapeHtml(value) : '<span class="front-matter-empty">empty</span>';
 }
 
 async function renderMermaidDiagrams(activeTheme, currentRenderGeneration) {
