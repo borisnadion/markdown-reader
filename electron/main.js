@@ -260,7 +260,11 @@ function buildMenu() {
           }
         },
         { type: 'separator' },
-        { role: 'close' }
+        {
+          label: 'Close Tab',
+          accelerator: 'CommandOrControl+W',
+          click: () => mainWindow?.webContents.send('document:close')
+        }
       ]
     },
     {

@@ -194,10 +194,17 @@ window.markdownReader.onZoomReset(resetZoom);
 window.markdownReader.onSearchFocus(focusSearch);
 window.markdownReader.onNextDocument(switchToNextDocument);
 window.markdownReader.onPreviousDocument(() => switchToNextDocument(-1));
+window.markdownReader.onCloseDocument(closeActiveDocument);
 void window.markdownReader.ready();
 
 window.addEventListener('keydown', (event) => {
   if (!event.metaKey && !event.ctrlKey) return;
+
+  if (!event.shiftKey && !event.altKey && event.key.toLowerCase() === 'w') {
+    event.preventDefault();
+    closeActiveDocument();
+    return;
+  }
 
   if (event.key.toLowerCase() === 'f') {
     event.preventDefault();
@@ -352,6 +359,22 @@ function switchToNextDocument(direction = 1) {
     (activeIndex + direction + state.documents.length) % state.documents.length;
 
   switchToDocument(state.documents[nextIndex].id);
+}
+
+function closeActiveDocument() {
+  const activeIndex = state.documents.findIndex(
+    (document) => document.id === state.activeDocumentId
+  );
+  if (activeIndex === -1) return;
+
+  state.documents.splice(activeIndex, 1);
+  state.activeDocumentId =
+    state.documents[Math.min(activeIndex, state.documents.length - 1)]?.id || '';
+
+  resetSearchState();
+  searchInput.value = '';
+  render();
+  scrollPreviewToTop();
 }
 
 function getActiveDocument() {

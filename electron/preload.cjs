@@ -46,5 +46,10 @@ contextBridge.exposeInMainWorld('markdownReader', {
     const listener = () => callback();
     ipcRenderer.on('document:previous', listener);
     return () => ipcRenderer.removeListener('document:previous', listener);
+  },
+  onCloseDocument: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('document:close', listener);
+    return () => ipcRenderer.removeListener('document:close', listener);
   }
 });
