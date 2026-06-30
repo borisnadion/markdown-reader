@@ -829,7 +829,7 @@ function renderMermaidError(diagram) {
 }
 
 function renderDocumentTabs() {
-  documentTabsEl.hidden = state.documents.length === 0;
+  documentTabsEl.hidden = state.documents.length < 2;
   documentTabsEl.replaceChildren(
     ...state.documents.map((openDocument) => {
       const isActive = openDocument.id === state.activeDocumentId;
