@@ -46,6 +46,7 @@ const BASE_CONTENT_WIDTH = 900;
 const ZOOM_LEVELS = Array.from({ length: 21 }, (_, index) => Number((0.5 + index * 0.1).toFixed(1)));
 const MERMAID_LANGUAGE = 'mermaid';
 const MERMAID_RENDER_ERROR_MESSAGE = 'cannot render mermaid diafram';
+const MARKDOWN_LINK_PATTERN = /\.(md|markdown|mdown|mkd)(?:[?#]|$)/i;
 
 let nextDocumentId = 1;
 let renderGeneration = 0;
@@ -132,6 +133,7 @@ app.innerHTML = `
 const fileNameEl = document.querySelector('#file-name');
 const filePathEl = document.querySelector('#file-path');
 const previewEl = document.querySelector('#preview');
+const viewerFrameEl = document.querySelector('.viewer-frame');
 const themeSelect = document.querySelector('#theme-select');
 const zoomValue = document.querySelector('#zoom-reset');
 const dropOverlay = document.querySelector('#drop-overlay');
@@ -180,6 +182,10 @@ searchInput.addEventListener('input', () => {
   resetSearchState();
 });
 
+previewEl.addEventListener('click', (event) => {
+  void openLinkedMarkdownDocument(event);
+});
+
 window.markdownReader.onFileOpen(openFiles);
 window.markdownReader.onFileChange(updateFile);
 window.markdownReader.onZoomIn(zoomIn);
@@ -201,6 +207,16 @@ window.addEventListener('keydown', (event) => {
   if (event.code === 'Backquote' || event.key === '`' || event.key === '~') {
     event.preventDefault();
     switchToNextDocument(event.shiftKey ? -1 : 1);
+  }
+
+  if (event.shiftKey && (event.code === 'BracketRight' || event.key === ']' || event.key === '}')) {
+    event.preventDefault();
+    switchToNextDocument(1);
+  }
+
+  if (event.shiftKey && (event.code === 'BracketLeft' || event.key === '[' || event.key === '{')) {
+    event.preventDefault();
+    switchToNextDocument(-1);
   }
 
   if (event.key === '+' || event.key === '=') {
@@ -275,6 +291,7 @@ function openFiles(files) {
   resetSearchState();
   searchInput.value = '';
   render();
+  scrollPreviewToTop();
 }
 
 function updateFile(file) {
@@ -321,6 +338,7 @@ function switchToDocument(documentId) {
   resetSearchState();
   searchInput.value = '';
   render();
+  scrollPreviewToTop();
 }
 
 function switchToNextDocument(direction = 1) {
@@ -338,6 +356,47 @@ function switchToNextDocument(direction = 1) {
 
 function getActiveDocument() {
   return state.documents.find((document) => document.id === state.activeDocumentId) || null;
+}
+
+async function openLinkedMarkdownDocument(event) {
+  if (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  ) {
+    return;
+  }
+
+  const link = event.target.closest('a[href]');
+  if (!link || !previewEl.contains(link)) return;
+
+  const href = link.getAttribute('href');
+  if (!isLocalMarkdownLink(href)) return;
+
+  event.preventDefault();
+
+  const files = await window.markdownReader.openLinkedMarkdown(
+    href,
+    getActiveDocument()?.path || ''
+  );
+
+  if (files?.length) openFiles(files);
+}
+
+function isLocalMarkdownLink(href) {
+  if (!href) return false;
+
+  const protocol = href.match(/^([a-z][a-z\d+.-]*):/i)?.[1]?.toLowerCase();
+  if (protocol && protocol !== 'file') return false;
+
+  return MARKDOWN_LINK_PATTERN.test(stripLinkFragmentAndQuery(href));
+}
+
+function stripLinkFragmentAndQuery(href) {
+  return href.split('#')[0].split('?')[0];
 }
 
 function normalizeCodeLanguage(language) {
@@ -664,16 +723,19 @@ function renderSearchHighlights() {
 function scrollActiveSearchMatchIntoView() {
   const activeMatch = state.searchMatches[state.activeSearchIndex];
   const matchRect = activeMatch?.getBoundingClientRect();
-  const viewerFrame = document.querySelector('.viewer-frame');
 
-  if (!activeMatch || !matchRect || !viewerFrame) return;
+  if (!activeMatch || !matchRect || !viewerFrameEl) return;
 
-  const viewerRect = viewerFrame.getBoundingClientRect();
-  viewerFrame.scrollBy({
-    top: matchRect.top - viewerRect.top - viewerFrame.clientHeight / 2 + matchRect.height / 2,
-    left: matchRect.left - viewerRect.left - viewerFrame.clientWidth / 2 + matchRect.width / 2,
+  const viewerRect = viewerFrameEl.getBoundingClientRect();
+  viewerFrameEl.scrollBy({
+    top: matchRect.top - viewerRect.top - viewerFrameEl.clientHeight / 2 + matchRect.height / 2,
+    left: matchRect.left - viewerRect.left - viewerFrameEl.clientWidth / 2 + matchRect.width / 2,
     behavior: 'smooth'
   });
+}
+
+function scrollPreviewToTop() {
+  viewerFrameEl?.scrollTo({ top: 0, left: 0 });
 }
 
 function resetSearchState() {
@@ -711,7 +773,7 @@ Open a Markdown file with **Command+O** or drop one into this window.
 ## Features
 
 - GitHub-flavored Markdown
-- Multiple open files with Command+\` switching
+- Multiple open files with Command+Shift+[ and Command+Shift+] switching
 - Light and dark themes
 - Syntax highlighting
 - Mermaid diagrams

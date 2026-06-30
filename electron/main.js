@@ -110,6 +110,39 @@ async function readMarkdownFiles(filePaths) {
   return Promise.all(filePaths.map((filePath) => readMarkdownFile(filePath)));
 }
 
+function resolveLinkedMarkdownPath(href, basePath) {
+  if (typeof href !== 'string') return '';
+
+  let linkedPath = href.trim();
+  if (!linkedPath) return '';
+
+  try {
+    const linkedUrl = new URL(linkedPath);
+    if (linkedUrl.protocol !== 'file:') return '';
+    linkedPath = fileURLToPath(linkedUrl);
+  } catch {
+    linkedPath = stripLinkFragmentAndQuery(linkedPath);
+    try {
+      linkedPath = decodeURIComponent(linkedPath);
+    } catch {
+      // Keep the original path if it is not URI-encoded cleanly.
+    }
+  }
+
+  const baseDirectory = basePath ? path.dirname(basePath) : process.cwd();
+  const resolvedPath = path.isAbsolute(linkedPath)
+    ? path.resolve(linkedPath)
+    : path.resolve(baseDirectory, linkedPath);
+
+  if (!MARKDOWN_FILE_PATTERN.test(resolvedPath) || !existsSync(resolvedPath)) return '';
+
+  return resolvedPath;
+}
+
+function stripLinkFragmentAndQuery(href) {
+  return href.split('#')[0].split('?')[0];
+}
+
 function normalizeWatchPath(filePath) {
   return filePath ? path.resolve(filePath) : '';
 }
@@ -299,6 +332,18 @@ function buildMenu() {
           accelerator: 'CommandOrControl+Shift+`',
           click: () => mainWindow?.webContents.send('document:previous')
         },
+        {
+          label: 'Next Tab',
+          accelerator: 'CommandOrControl+Shift+]',
+          visible: false,
+          click: () => mainWindow?.webContents.send('document:next')
+        },
+        {
+          label: 'Previous Tab',
+          accelerator: 'CommandOrControl+Shift+[',
+          visible: false,
+          click: () => mainWindow?.webContents.send('document:previous')
+        },
         { type: 'separator' },
         { role: 'minimize' },
         { role: 'zoom' },
@@ -324,6 +369,15 @@ ipcMain.handle('dialog:openMarkdown', async () => {
 
 ipcMain.handle('file:watch', (_event, filePaths) => {
   watchMarkdownFiles(Array.isArray(filePaths) ? filePaths : [filePaths]);
+});
+
+ipcMain.handle('file:openLinkedMarkdown', async (_event, href, basePath) => {
+  const linkedPath = resolveLinkedMarkdownPath(href, basePath);
+  if (!linkedPath) return [];
+
+  const files = await readMarkdownFiles([linkedPath]);
+  watchMarkdownFiles([linkedPath]);
+  return files;
 });
 
 ipcMain.handle('renderer:ready', async (event) => {
