@@ -123,11 +123,19 @@ app.innerHTML = `
         </div>
       </div>
     </header>
-    <nav class="document-tabs" id="document-tabs" aria-label="Open documents"></nav>
+    <div class="workspace">
+      <nav
+        class="document-tabs"
+        id="document-tabs"
+        aria-label="Open documents"
+        aria-orientation="vertical"
+        role="tablist"
+      ></nav>
+      <section class="viewer-frame">
+        <article class="markdown-body" id="preview"></article>
+      </section>
+    </div>
     <section class="drop-overlay" id="drop-overlay">Drop Markdown files to open</section>
-    <section class="viewer-frame">
-      <article class="markdown-body" id="preview"></article>
-    </section>
   </main>
 `;
 
@@ -154,10 +162,16 @@ document.querySelector('#open-file').addEventListener('click', async () => {
 });
 
 documentTabsEl.addEventListener('click', (event) => {
-  const tab = event.target.closest('[data-document-id]');
-  if (!tab) return;
+  const closeButton = event.target.closest('[data-document-action="close"]');
+  if (closeButton && documentTabsEl.contains(closeButton)) {
+    closeDocument(closeButton.dataset.documentId);
+    return;
+  }
 
-  switchToDocument(tab.dataset.documentId);
+  const tabButton = event.target.closest('[data-document-action="switch"]');
+  if (!tabButton || !documentTabsEl.contains(tabButton)) return;
+
+  switchToDocument(tabButton.dataset.documentId);
 });
 
 themeSelect.addEventListener('change', () => {
@@ -363,19 +377,30 @@ function switchToNextDocument(direction = 1) {
 }
 
 function closeActiveDocument() {
+  closeDocument(state.activeDocumentId);
+}
+
+function closeDocument(documentId) {
   const activeIndex = state.documents.findIndex(
-    (document) => document.id === state.activeDocumentId
+    (document) => document.id === documentId
   );
   if (activeIndex === -1) return;
 
+  const isClosingActiveDocument = documentId === state.activeDocumentId;
   state.documents.splice(activeIndex, 1);
-  state.activeDocumentId =
-    state.documents[Math.min(activeIndex, state.documents.length - 1)]?.id || '';
 
-  resetSearchState();
-  searchInput.value = '';
-  render();
-  scrollPreviewToTop();
+  if (isClosingActiveDocument) {
+    state.activeDocumentId =
+      state.documents[Math.min(activeIndex, state.documents.length - 1)]?.id || '';
+
+    resetSearchState();
+    searchInput.value = '';
+    render();
+    scrollPreviewToTop();
+    return;
+  }
+
+  renderDocumentTabs();
 }
 
 function getActiveDocument() {
@@ -807,13 +832,31 @@ function renderDocumentTabs() {
   documentTabsEl.hidden = state.documents.length === 0;
   documentTabsEl.replaceChildren(
     ...state.documents.map((openDocument) => {
-      const tab = document.createElement('button');
-      tab.type = 'button';
+      const isActive = openDocument.id === state.activeDocumentId;
+      const tab = document.createElement('div');
       tab.className = 'document-tab';
-      tab.dataset.documentId = openDocument.id;
-      tab.textContent = openDocument.name;
-      tab.title = openDocument.path || openDocument.name;
-      tab.setAttribute('aria-selected', String(openDocument.id === state.activeDocumentId));
+      tab.classList.toggle('is-active', isActive);
+
+      const tabButton = document.createElement('button');
+      tabButton.type = 'button';
+      tabButton.className = 'document-tab-label';
+      tabButton.dataset.documentAction = 'switch';
+      tabButton.dataset.documentId = openDocument.id;
+      tabButton.textContent = openDocument.name;
+      tabButton.title = openDocument.path || openDocument.name;
+      tabButton.setAttribute('aria-selected', String(isActive));
+      tabButton.setAttribute('role', 'tab');
+
+      const closeButton = document.createElement('button');
+      closeButton.type = 'button';
+      closeButton.className = 'document-tab-close';
+      closeButton.dataset.documentAction = 'close';
+      closeButton.dataset.documentId = openDocument.id;
+      closeButton.textContent = '×';
+      closeButton.title = `Close ${openDocument.name}`;
+      closeButton.setAttribute('aria-label', `Close ${openDocument.name}`);
+
+      tab.append(tabButton, closeButton);
       return tab;
     })
   );
