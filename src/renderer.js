@@ -52,6 +52,7 @@ const MERMAID_LANGUAGE = 'mermaid';
 const MERMAID_RENDER_ERROR_MESSAGE = 'cannot render mermaid diafram';
 const MARKDOWN_LINK_PATTERN = /\.(md|markdown|mdown|mkd)(?:[?#]|$)/i;
 const FRONT_MATTER_DELIMITER = '---';
+const INITIAL_SCROLL_POSITION = Object.freeze({ top: 0, left: 0 });
 
 let nextDocumentId = 1;
 let renderGeneration = 0;
@@ -196,11 +197,17 @@ documentTabsResizerEl.addEventListener('keydown', resizeTabSidebarFromKeyboard);
 themeSelect.addEventListener('change', () => {
   state.themePreference = themeSelect.value;
   localStorage.setItem('theme', state.themePreference);
+  saveActiveDocumentScrollPosition();
   render();
+  restoreActiveDocumentScrollPosition();
 });
 
 systemColorScheme.addEventListener('change', () => {
-  if (state.themePreference === 'system') render();
+  if (state.themePreference !== 'system') return;
+
+  saveActiveDocumentScrollPosition();
+  render();
+  restoreActiveDocumentScrollPosition();
 });
 
 document.querySelector('#zoom-out').addEventListener('click', zoomOut);
@@ -316,6 +323,7 @@ function openFiles(files) {
   const documents = (Array.isArray(files) ? files : [files]).map(normalizeDocument).filter(Boolean);
   if (documents.length === 0) return;
 
+  saveActiveDocumentScrollPosition();
   watchDocumentPaths(documents);
 
   for (const openDocument of documents) {
@@ -328,7 +336,11 @@ function openFiles(files) {
       state.activeDocumentId = openDocument.id;
     } else {
       const existingDocument = state.documents[existingIndex];
-      state.documents[existingIndex] = { ...openDocument, id: existingDocument.id };
+      state.documents[existingIndex] = {
+        ...openDocument,
+        id: existingDocument.id,
+        scrollPosition: getDocumentScrollPosition(existingDocument)
+      };
       state.activeDocumentId = existingDocument.id;
     }
   }
@@ -336,7 +348,7 @@ function openFiles(files) {
   resetSearchState();
   searchInput.value = '';
   render();
-  scrollPreviewToTop();
+  restoreActiveDocumentScrollPosition();
 }
 
 function updateFile(file) {
@@ -349,10 +361,19 @@ function updateFile(file) {
   if (existingIndex === -1) return;
 
   const existingDocument = state.documents[existingIndex];
-  state.documents[existingIndex] = { ...updatedDocument, id: existingDocument.id };
+  if (existingDocument.id === state.activeDocumentId) {
+    saveActiveDocumentScrollPosition();
+  }
+
+  state.documents[existingIndex] = {
+    ...updatedDocument,
+    id: existingDocument.id,
+    scrollPosition: getDocumentScrollPosition(existingDocument)
+  };
 
   if (existingDocument.id === state.activeDocumentId) {
     render();
+    restoreActiveDocumentScrollPosition();
   }
 }
 
@@ -372,18 +393,21 @@ function normalizeDocument(file) {
     id: file.path || `untitled-${nextDocumentId++}`,
     name,
     path: file.path || '',
-    content: file.content
+    content: file.content,
+    scrollPosition: { ...INITIAL_SCROLL_POSITION }
   };
 }
 
 function switchToDocument(documentId) {
   if (!state.documents.some((document) => document.id === documentId)) return;
+  if (documentId === state.activeDocumentId) return;
 
+  saveActiveDocumentScrollPosition();
   state.activeDocumentId = documentId;
   resetSearchState();
   searchInput.value = '';
   render();
-  scrollPreviewToTop();
+  restoreActiveDocumentScrollPosition();
 }
 
 function switchToNextDocument(direction = 1) {
@@ -419,7 +443,7 @@ function closeDocument(documentId) {
     resetSearchState();
     searchInput.value = '';
     render();
-    scrollPreviewToTop();
+    restoreActiveDocumentScrollPosition();
     return;
   }
 
@@ -1093,8 +1117,35 @@ function scrollActiveSearchMatchIntoView() {
   });
 }
 
-function scrollPreviewToTop() {
-  viewerFrameEl?.scrollTo({ top: 0, left: 0 });
+function saveActiveDocumentScrollPosition() {
+  const activeDocument = getActiveDocument();
+  if (!activeDocument || !viewerFrameEl) return;
+
+  activeDocument.scrollPosition = {
+    top: viewerFrameEl.scrollTop,
+    left: viewerFrameEl.scrollLeft
+  };
+}
+
+function restoreActiveDocumentScrollPosition() {
+  if (!viewerFrameEl) return;
+
+  const activeDocument = getActiveDocument();
+  const scrollPosition = getDocumentScrollPosition(activeDocument);
+  viewerFrameEl.scrollTo({
+    top: scrollPosition.top,
+    left: scrollPosition.left
+  });
+}
+
+function getDocumentScrollPosition(document) {
+  const top = document?.scrollPosition?.top;
+  const left = document?.scrollPosition?.left;
+
+  return {
+    top: Number.isFinite(top) ? top : INITIAL_SCROLL_POSITION.top,
+    left: Number.isFinite(left) ? left : INITIAL_SCROLL_POSITION.left
+  };
 }
 
 function resetSearchState() {
