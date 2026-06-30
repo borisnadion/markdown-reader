@@ -37,12 +37,16 @@ const state = {
   activeDocumentId: '',
   themePreference: localStorage.getItem('theme') || 'system',
   zoom: Number(localStorage.getItem('zoom') || '1'),
+  tabSidebarWidth: Number(localStorage.getItem('tabSidebarWidth') || '220'),
   searchQuery: '',
   searchMatches: [],
   activeSearchIndex: -1
 };
 
 const BASE_CONTENT_WIDTH = 900;
+const TAB_SIDEBAR_MIN_WIDTH = 128;
+const TAB_SIDEBAR_MAX_WIDTH = 420;
+const PREVIEW_MIN_WIDTH = 320;
 const ZOOM_LEVELS = Array.from({ length: 21 }, (_, index) => Number((0.5 + index * 0.1).toFixed(1)));
 const MERMAID_LANGUAGE = 'mermaid';
 const MERMAID_RENDER_ERROR_MESSAGE = 'cannot render mermaid diafram';
@@ -131,6 +135,14 @@ app.innerHTML = `
         aria-orientation="vertical"
         role="tablist"
       ></nav>
+      <div
+        class="document-tabs-resizer"
+        id="document-tabs-resizer"
+        role="separator"
+        aria-label="Resize tabs"
+        aria-orientation="vertical"
+        tabindex="0"
+      ></div>
       <section class="viewer-frame">
         <article class="markdown-body" id="preview"></article>
       </section>
@@ -148,7 +160,11 @@ const zoomValue = document.querySelector('#zoom-reset');
 const dropOverlay = document.querySelector('#drop-overlay');
 const searchForm = document.querySelector('#search-form');
 const searchInput = document.querySelector('#search-input');
+const workspaceEl = document.querySelector('.workspace');
 const documentTabsEl = document.querySelector('#document-tabs');
+const documentTabsResizerEl = document.querySelector('#document-tabs-resizer');
+
+setTabSidebarWidth(state.tabSidebarWidth, { persist: false });
 
 themeSelect.innerHTML = themes
   .map((theme) => `<option value="${theme.id}">${theme.label}</option>`)
@@ -173,6 +189,9 @@ documentTabsEl.addEventListener('click', (event) => {
 
   switchToDocument(tabButton.dataset.documentId);
 });
+
+documentTabsResizerEl.addEventListener('pointerdown', startTabSidebarResize);
+documentTabsResizerEl.addEventListener('keydown', resizeTabSidebarFromKeyboard);
 
 themeSelect.addEventListener('change', () => {
   state.themePreference = themeSelect.value;
@@ -287,6 +306,10 @@ window.addEventListener('drop', async (event) => {
       }))
     )
   );
+});
+
+window.addEventListener('resize', () => {
+  setTabSidebarWidth(state.tabSidebarWidth, { persist: false });
 });
 
 function openFiles(files) {
@@ -859,6 +882,91 @@ function renderDocumentTabs() {
       tab.append(tabButton, closeButton);
       return tab;
     })
+  );
+}
+
+function startTabSidebarResize(event) {
+  if (event.button !== 0 || documentTabsEl.hidden) return;
+
+  event.preventDefault();
+  document.body.classList.add('is-resizing-tabs');
+  documentTabsResizerEl.setPointerCapture(event.pointerId);
+
+  const resize = (moveEvent) => {
+    resizeTabSidebarToClientX(moveEvent.clientX);
+  };
+
+  const stopResize = () => {
+    document.body.classList.remove('is-resizing-tabs');
+    documentTabsResizerEl.removeEventListener('pointermove', resize);
+    documentTabsResizerEl.removeEventListener('pointerup', stopResize);
+    documentTabsResizerEl.removeEventListener('pointercancel', stopResize);
+
+    if (documentTabsResizerEl.hasPointerCapture(event.pointerId)) {
+      documentTabsResizerEl.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  documentTabsResizerEl.addEventListener('pointermove', resize);
+  documentTabsResizerEl.addEventListener('pointerup', stopResize);
+  documentTabsResizerEl.addEventListener('pointercancel', stopResize);
+  resizeTabSidebarToClientX(event.clientX);
+}
+
+function resizeTabSidebarFromKeyboard(event) {
+  if (documentTabsEl.hidden) return;
+
+  const step = event.shiftKey ? 40 : 16;
+  const maxWidth = getTabSidebarMaxWidth();
+  let nextWidth = null;
+
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+    nextWidth = state.tabSidebarWidth - step;
+  } else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+    nextWidth = state.tabSidebarWidth + step;
+  } else if (event.key === 'Home') {
+    nextWidth = TAB_SIDEBAR_MIN_WIDTH;
+  } else if (event.key === 'End') {
+    nextWidth = maxWidth;
+  }
+
+  if (nextWidth === null) return;
+
+  event.preventDefault();
+  setTabSidebarWidth(nextWidth);
+}
+
+function resizeTabSidebarToClientX(clientX) {
+  const workspaceRect = workspaceEl.getBoundingClientRect();
+  setTabSidebarWidth(clientX - workspaceRect.left);
+}
+
+function setTabSidebarWidth(width, options = {}) {
+  const desiredWidth = Number.isFinite(width) ? width : 220;
+  const maxWidth = getTabSidebarMaxWidth();
+  const appliedWidth = Math.round(
+    Math.min(maxWidth, Math.max(TAB_SIDEBAR_MIN_WIDTH, desiredWidth))
+  );
+
+  state.tabSidebarWidth = desiredWidth;
+  workspaceEl.style.setProperty('--tabs-width', `${appliedWidth}px`);
+  documentTabsResizerEl.setAttribute('aria-valuemin', String(TAB_SIDEBAR_MIN_WIDTH));
+  documentTabsResizerEl.setAttribute('aria-valuemax', String(maxWidth));
+  documentTabsResizerEl.setAttribute('aria-valuenow', String(appliedWidth));
+
+  if (options.persist !== false) {
+    localStorage.setItem('tabSidebarWidth', String(appliedWidth));
+  }
+}
+
+function getTabSidebarMaxWidth() {
+  const workspaceWidth = workspaceEl?.clientWidth || window.innerWidth || 0;
+
+  if (workspaceWidth <= 0) return TAB_SIDEBAR_MAX_WIDTH;
+
+  return Math.min(
+    TAB_SIDEBAR_MAX_WIDTH,
+    Math.max(TAB_SIDEBAR_MIN_WIDTH, workspaceWidth - PREVIEW_MIN_WIDTH)
   );
 }
 

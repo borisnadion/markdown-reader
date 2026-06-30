@@ -192,7 +192,7 @@ select {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(176px, 240px) minmax(0, 1fr);
+  grid-template-columns: var(--tabs-width, 220px) 6px minmax(0, 1fr);
   min-height: 0;
 }
 
@@ -200,12 +200,15 @@ select {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.workspace:has(.document-tabs[hidden]) .document-tabs-resizer {
+  display: none;
+}
+
 .document-tabs {
   -webkit-app-region: no-drag;
   align-content: start;
   align-items: stretch;
   background: var(--tab-bg);
-  border-right: 1px solid var(--toolbar-border);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -219,6 +222,44 @@ select {
 
 .document-tabs[hidden] {
   display: none;
+}
+
+.document-tabs-resizer {
+  -webkit-app-region: no-drag;
+  background: var(--tab-bg);
+  border-left: 1px solid var(--toolbar-border);
+  border-right: 1px solid var(--toolbar-border);
+  cursor: col-resize;
+  min-height: 0;
+  position: relative;
+}
+
+.document-tabs-resizer::before {
+  background: transparent;
+  border-radius: 999px;
+  content: "";
+  inset: 10px 2px;
+  position: absolute;
+}
+
+.document-tabs-resizer:hover::before,
+.document-tabs-resizer:focus-visible::before,
+body.is-resizing-tabs .document-tabs-resizer::before {
+  background: color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
+.document-tabs-resizer:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  outline-offset: -2px;
+}
+
+body.is-resizing-tabs {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body.is-resizing-tabs * {
+  cursor: col-resize !important;
 }
 
 .document-tab {
@@ -377,7 +418,7 @@ select {
   }
 
   .workspace {
-    grid-template-columns: minmax(148px, 36vw) minmax(0, 1fr);
+    grid-template-columns: var(--tabs-width, 180px) 6px minmax(0, 1fr);
   }
 
   .document-tabs {
@@ -404,7 +445,7 @@ select {
   }
 
   .workspace {
-    grid-template-columns: minmax(128px, 38vw) minmax(0, 1fr);
+    grid-template-columns: var(--tabs-width, 160px) 6px minmax(0, 1fr);
   }
 
   .document-tab {
